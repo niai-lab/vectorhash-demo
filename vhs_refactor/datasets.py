@@ -3,40 +3,7 @@ datasets.py
 Synthetic data generators shared across experiments.
 """
 import numpy as np
-from typing import List
-import sys, os
-
-def random_patterns(n_items: int, dim: int, seed: int = 0, bipolar: bool = True) -> List[np.ndarray]:
-    rng = np.random.default_rng(seed)
-    if bipolar:
-        data = rng.choice([-1.0, 1.0], size=(n_items, dim))
-    else:
-        data = rng.normal(size=(n_items, dim))
-    return [row for row in data]
-
-
-def add_noise(pattern: np.ndarray, noise_level: float, seed: int = 0) -> np.ndarray:
-    rng = np.random.default_rng(seed)
-    flip_mask = rng.random(pattern.shape) < noise_level
-    noisy = pattern.copy()
-    noisy[flip_mask] *= -1.0
-    return noisy
-
-
-def all_velocities(max_speed: int = 1) -> List[tuple]:
-    """The full closed set of unit-step velocities random_walk_velocities
-    samples from. Pass this as SequenceMemory's velocity_table so every
-    velocity a training walk can produce has a matching output class."""
-    return [(dx, dy) for dx in range(-max_speed, max_speed + 1)
-            for dy in range(-max_speed, max_speed + 1) if not (dx == 0 and dy == 0)]
-
-
-def random_walk_velocities(n_steps: int, max_speed: int = 1, seed: int = 0) -> List[tuple]:
-    rng = np.random.default_rng(seed)
-    choices = all_velocities(max_speed)
-    idx = rng.integers(0, len(choices), size=n_steps)
-    return [choices[i] for i in idx]
-
+import os
 
 _sensory_data_cache = None
 
