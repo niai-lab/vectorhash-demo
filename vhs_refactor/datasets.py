@@ -31,15 +31,15 @@ def prepare_sensory_data():
     
     # 1. 이미지 로드 (cwd에 상관없이 이 폴더(vhs_refactor) 안의 파일만 사용)
     file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                              'BW_miniimagenet_3600_60_60_full_rank.npy')
+                              'BW_miniimagenet_4600_60_60.npy')
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"데이터 파일을 찾을 수 없습니다: {file_path}")
-        
+
     img = np.load(file_path)
     # print("원본 이미지 형태:", img.shape)
 
-    # 2. 평탄화 및 전치 (3600, 60, 60) -> (3600, 3600)
-    img_flat = img.reshape((3600, 3600)).T
+    # 2. 평탄화 및 전치 (n_images, 60, 60) -> (3600, n_images)
+    img_flat = img.reshape((img.shape[0], 3600)).T
 
     # 3. Sensory book 구성: block(60x60)이 n_states(3600) 전체를 정확히 덮어서
     # idx(=x*Npos+y)가 항상 k와 같은 순서로 증가 -> 결과가 img_flat과 완전히 동일.

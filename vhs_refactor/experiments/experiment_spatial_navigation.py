@@ -349,7 +349,7 @@ def plot_paths(model, novel_model=None, title="Grid world", unvisited_steps=None
                                 fontsize=8, color="darkorange")
 
     ax.set_xlabel("x"); ax.set_ylabel("y")
-    ax.set_title(title, fontsize=14, fontweight="bold")
+    ax.set_title(title, fontsize=14)
     ax.set_aspect("equal")
     ax.set_box_aspect(1)
     ax.xaxis.set_major_locator(MultipleLocator(5))
@@ -429,7 +429,7 @@ def _unvisited_steps(model, novel_model):
     return steps
 
 
-def _plot_novel_step_column(axes, col, t, model, novel_model):
+def _plot_novel_step_column(axes, col, t, model, novel_model, title_color="black"):
     """novel path의 step t 지점에서 True/Recall sensory, grid state, HPC state를
     한 컬럼(axes[:, col])에 그린다. demo_revisit_predictions/demo_unvisited_predictions
     공용 -- 재방문/미방문 어느 지점이든 t만 주면 동일하게 동작."""
@@ -447,18 +447,18 @@ def _plot_novel_step_column(axes, col, t, model, novel_model):
     cos = float(np.dot(target, recon) / (np.linalg.norm(target) * np.linalg.norm(recon) + 1e-10))
 
     axes[0, col].imshow(reshape_sensory_to_image(target), cmap="gray")
-    axes[0, col].set_title(f"t={t}", fontsize=11, fontweight="bold"); axes[0, col].axis("off")
+    axes[0, col].set_title(f"t={t}", fontsize=11, fontweight="bold", color=title_color); axes[0, col].axis("off")
     axes[1, col].imshow(reshape_sensory_to_image(recon), cmap="gray")
-    axes[1, col].set_title(f"cos={cos:.3f}", fontsize=10); axes[1, col].axis("off")
+    axes[1, col].set_title(f"cos_sim={cos:.2f}", fontsize=10); axes[1, col].axis("off")
 
     plot_grid_modules_square(axes[2, col], model["grid_code"], g_clean)
     axes[3, col].imshow(reshape_sensory_to_image(h_clean), cmap="magma")
-    axes[3, col].set_title("HPC state", fontsize=9, color="dimgray")
     axes[3, col].axis("off")
     return cos
 
 
-def _plot_novel_steps_grid(model, novel_model, selected, suptitle, show_row_labels=True):
+def _plot_novel_steps_grid(model, novel_model, selected, suptitle, show_row_labels=True,
+                            title_color="black", label_color="black"):
     n_rows = 4  # True sensory / Recall sensory / grid state(모듈 전체, 한 패널) / HPC state
     n_show = len(selected)
     # grid state(row 2) 실제 내용은 sheared 마름모라 가로세로 비율이 ~3:1 (넓적함).
@@ -466,12 +466,13 @@ def _plot_novel_steps_grid(model, novel_model, selected, suptitle, show_row_labe
     # 안 쓰이는 흰 여백이 크게 남는다 -- 그 행만 내용 비율(1/3)에 맞게 낮춰서
     # 모양(마름모) 그대로 유지하면서 여백만 없앤다.
     row_h_ratio = [1, 1, 1 / 3, 1]
+    fig_w = 3.2 * n_show
     fig, axes = plt.subplots(n_rows, n_show, gridspec_kw={"height_ratios": row_h_ratio},
-                              figsize=(3.2 * n_show, 3.2 * sum(row_h_ratio)))
+                              figsize=(fig_w, 3.2 * sum(row_h_ratio)))
     if n_show == 1:
         axes = axes.reshape(n_rows, 1)
 
-    cos_list = [_plot_novel_step_column(axes, col, t, model, novel_model)
+    cos_list = [_plot_novel_step_column(axes, col, t, model, novel_model, title_color=title_color)
                 for col, t in enumerate(selected)]
 
     if show_row_labels:
@@ -479,18 +480,27 @@ def _plot_novel_steps_grid(model, novel_model, selected, suptitle, show_row_labe
         for row, label in enumerate(row_labels):
             axes[row, 0].annotate(label, xy=(-0.15, 0.5), xycoords="axes fraction",
                                    ha="right", va="center", fontsize=12, fontweight="bold",
-                                   rotation=90)
+                                   rotation=90, color=label_color)
 
-    fig.suptitle(suptitle, fontsize=14, fontweight="bold")
     # tight_layout()은 axes마다 get_tightbbox(텍스트 렌더링)를 다 계산해야 해서
     # 열 수가 많아지면(4x4=16 axes) 느림(~0.5s/call). 고정 여백으로 대체해서
     # 슬라이더 인터랙션마다 다시 그릴 때 빠르게.
     fig.subplots_adjust(left=0.06, right=0.98, top=0.96, bottom=0.02, hspace=0.08, wspace=0.25)
+
+    # ponytail: CSS(max-width:90%)가 figsize 상관없이 컨테이너 폭을 똑같이 맞춰버려서,
+    # 원본 그림이 넓을수록(n_show 클수록) 같은 fontsize라도 화면상 더 작게 보임.
+    # Grid world 그림(figsize width=6.8, fontsize=14)과 같은 "inch당 글자 크기"가
+    # 되도록 fig_w에 비례해서 fontsize를 키움 -- n_show 바뀌어도 항상 매칭됨.
+    # x=0.5(전체 figure 중앙)면 row label 여백(left=0.06)만큼 이미지들 중앙에서
+    # 오른쪽으로 치우쳐 보여서, 실제 이미지 열(axes[0,0]~axes[0,-1]) 중앙에 맞춘다.
+    pos0, posN = axes[0, 0].get_position(), axes[0, -1].get_position()
+    title_x = (pos0.x0 + posN.x1) / 2
+    fig.suptitle(suptitle, x=title_x, fontsize=14 * (fig_w / 6.8))
     plt.show()
     return cos_list
 
 
-def demo_revisit_predictions(model, novel_model, n_revisits=10, seed=2):
+def demo_revisit_predictions(model, novel_model, n_revisits=10, seed=2, show_row_labels=True):
     """새 경로가 원래 경로와 겹치는(재방문) 지점들 중 최대 n_revisits개를
     뽑아서, 그 지점에서 예측되는 sensory를 실제 landmark와 비교한다
     (fig4c cell 6 스타일: 위 True / 아래 Recall). 이 지점들은 학습 때 실제로
@@ -503,7 +513,8 @@ def demo_revisit_predictions(model, novel_model, n_revisits=10, seed=2):
     n_show = min(n_revisits, len(overlap_steps))
     selected = np.sort(rng.choice(overlap_steps, size=n_show, replace=False))
     suptitle = "Recalled images on revisited locations"
-    return _plot_novel_steps_grid(model, novel_model, selected, suptitle)
+    return _plot_novel_steps_grid(model, novel_model, selected, suptitle,
+                                   show_row_labels=show_row_labels, title_color="red")
 
 
 def plot_unvisited_distance_map(model, novel_model, n_show=2, seed=2):
@@ -527,8 +538,11 @@ def demo_unvisited_by_distance(model, novel_model, unvisited):
     부정확함을 확인할 수 있다."""
     if not unvisited:
         return []
+    # show_row_labels=True(색만 투명) -- revisit 패널과 축 구조(왼쪽 여백)를 똑같이
+    # 만들어야 두 패널 화면 표시 크기가 일치한다. False로 완전히 빼면 이 패널만
+    # 왼쪽 라벨 공간이 없어져서(annotate 유무 차이) tight bbox가 서로 달라진다.
     return _plot_novel_steps_grid(model, novel_model, unvisited, "Recalled images on novel locations",
-                                   show_row_labels=False)
+                                   show_row_labels=True, label_color="none", title_color="orange")
 
 
 def demo_unvisited_predictions(model, novel_model, n_show=10, seed=2):
@@ -546,7 +560,7 @@ def demo_unvisited_predictions(model, novel_model, n_show=10, seed=2):
     n_show = min(n_show, len(candidates))
     selected = np.sort(rng.choice(candidates, size=n_show, replace=False))
     suptitle = f"Novel path UNVISITED points ({n_show}/{len(candidates)} points shown)"
-    return _plot_novel_steps_grid(model, novel_model, selected, suptitle)
+    return _plot_novel_steps_grid(model, novel_model, selected, suptitle, title_color="orange")
 
 
 def demo_sensory_to_location(model, query_step=5):

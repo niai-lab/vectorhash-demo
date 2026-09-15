@@ -152,7 +152,7 @@ def render_node_states_panel(mem, items, target_idx, noise_type, noise_ratio, ex
 
     axes[0, 2].imshow(s_rec_2d, cmap="gray")
     title3_suffix = "None" if closest_idx is None else f"#{closest_idx + 1}"
-    axes[0, 2].set_title(f"Recalled item {title3_suffix} (cos_sim={cos_sim:.3f})", fontsize=12)
+    axes[0, 2].set_title(f"Recalled item {title3_suffix} (cos_sim={cos_sim:.2f})", fontsize=12)
     axes[0, 2].axis('off')
 
     plot_grid_modules_square(axes[1, 0], grid_code, g_true)

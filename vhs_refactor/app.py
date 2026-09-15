@@ -1,7 +1,7 @@
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-os.environ.setdefault("OPENBLAS_NUM_THREADS", "4")  # 작은 matvec/pinv 다수 호출 시 BLAS 스레드 스폰 오버헤드로 10배+ 느려지는 문제 방지 (numpy import 전에 설정해야 함)
-os.environ.setdefault("OMP_NUM_THREADS", "4")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "24")  # 제한 없으면 OpenBLAS가 nproc(72)까지 스레드 스폰 -> 코어 수 넘어가면서 오버헤드 폭발 (48/72스레드 실측 6~7배 느려짐). 16~32 구간은 실측상 서로 비슷해서 24로 고정 (numpy import 전에 설정해야 함)
+os.environ.setdefault("OMP_NUM_THREADS", "24")
 
 import numpy as np
 import matplotlib
@@ -60,11 +60,22 @@ def _render_open_figures():
     use_container_width=False -- 기본값(True)은 컨테이너 폭에 무조건 맞춰
     늘려버려서 figsize를 줄여도 화면 출력 크기가 그대로였음. False로 두면
     figsize*dpi가 실제 출력 픽셀 크기가 되고(컨테이너보다 크면 그 폭까지만
-    줄어듦), figsize가 다시 출력 크기를 제어하는 값이 된다."""
-    for num in plt.get_fignums():
-        fig = plt.figure(num)
-        st.pyplot(fig, use_container_width=False)
-        plt.close(fig)
+    줄어듦), figsize가 다시 출력 크기를 제어하는 값이 된다.
+    plt.get_fignums()로 열린 figure 전부를 돌면, matplotlib의 전역 figure
+    registry가 프로세스 전체(세션/스레드 공유)라서 다른 세션이 아직 안 닫은
+    stray figure까지 같이 렌더링해버리는 경우가 있었다(예: Spatial Memory의
+    Grid world 자리에 Item Memory 그림이 나오는 현상). 각 plot 함수는 항상
+    plt.show() 호출 전에 figure를 정확히 하나만 만들므로, 방금 만든
+    plt.gcf() 하나만 그리면 다른 세션/직전 호출의 잔여 figure와 안 섞인다.
+    bbox_inches=None -- st.pyplot 기본값(bbox_inches="tight")은 저장되는 PNG
+    크기를 figsize가 아니라 실제 렌더된 콘텐츠(row label 유무, suptitle 텍스트
+    길이 등)를 감싸는 bbox로 정하기 때문에, figsize/내용 개수(n_show)가 같아도
+    패널마다 콘텐츠가 다르면 최종 픽셀 크기가 미세하게 달라져서 화면에 나란히
+    놓았을 때 세로 길이가 달라 보였다. None으로 두면 figsize 그대로 저장되어
+    같은 figsize는 항상 같은 픽셀 크기가 된다."""
+    fig = plt.gcf()
+    st.pyplot(fig, use_container_width=False, bbox_inches=None)
+    plt.close(fig)
 
 
 plt.show = _render_open_figures
@@ -141,8 +152,8 @@ def _get_3a_novel(_model, trained_length, novel_length):
 def render_spatial_memory():
     st.header("2. Spatial Memory")
     col1, col2 = st.columns(2)
-    trained_length = stepper_slider("Original path length:", 20, 200, 100, 10, key="spatial_trained_length", container=col1)
-    novel_length = stepper_slider("New path length:", 20, 200, 100, 10, key="spatial_novel_length", container=col2)
+    trained_length = stepper_slider("Original path length:", 20, 100, 50, 10, key="spatial_trained_length", container=col1)
+    novel_length = stepper_slider("New path length:", 20, 100, 50, 10, key="spatial_novel_length", container=col2)
 
     model = _get_3a_model(trained_length)
     novel_model = _get_3a_novel(model, trained_length, novel_length)
@@ -159,9 +170,10 @@ def render_spatial_memory():
 
 # =========================================================================
 # Memory Palace가 사용하는 데이터 소스: miniimagenet(old item) / 숫자카드(new item).
-# lambdas=(2,3,5), Ns=3600, seed=0으로 둘 다 동일해서 한 번만 계산해 공유한다.
+# lambdas=(2,5,7), Ns=3600, seed=0으로 둘 다 동일해서 한 번만 계산해 공유한다.
+# Npos=70 -> Nstates=4900 (N_m 슬라이더 최대 4000을 커버하기 위해 (2,3,5)에서 확장).
 # =========================================================================
-_PALACE_LAMBDAS = (2, 3, 5)
+_PALACE_LAMBDAS = (2, 5, 7)
 _PALACE_NS = 3600
 _PALACE_SEED = 0
 
@@ -204,7 +216,7 @@ def _make_numbered_card_book(Ns, Nstates, Npos, block_w, block_h, seed):
 @st.cache_data(max_entries=1, show_spinner="Loading miniimagenet book...")
 def _get_palace_books():
     Npos = int(np.prod(_PALACE_LAMBDAS))
-    block_w = block_h = min(60, Npos)
+    block_w = block_h = Npos
     Nstates = Npos * Npos
     sbook_old, _, _ = make_embedded_image_book_for_fig7(
         _PALACE_NS, Nstates, Npos, 0, 0, block_w, block_h,
@@ -246,14 +258,16 @@ def render_memory_palace_b():
     Ns = _PALACE_NS
     img_h = img_w = int(round(np.sqrt(Ns)))
     _, _, idxs_all, _, _ = _get_palace_books()
-    n_cards = len(idxs_all)
+    n_cards_full = len(idxs_all)
 
     col1, col2 = st.columns(2)
     Nh = stepper_slider("$N_h$", 10, 400, 200, 5, key="palace_b_Nh", container=col1)
-    depth = stepper_slider("$N_s$", 2, n_cards, min(30, n_cards), 1, key="palace_b_depth", container=col2)
+    n_cards = stepper_slider("$N_m$", 101, min(4000, n_cards_full), min(1000, n_cards_full), 50,
+                              key="palace_b_Nm", container=col2)
     col3, col4 = st.columns(2)
-    t = stepper_slider("Item index", 1, depth, 1, 1, key="palace_b_idx", container=col3) - 1
+    depth = stepper_slider("$N_s$", 2, n_cards, min(30, n_cards), 1, key="palace_b_depth", container=col3)
     noise_ratio_vis = stepper_slider("Noise ratio", 0.0, 0.9, 0.3, 0.1, key="palace_b_noise_ratio", container=col4)
+    t = stepper_slider("Item index", 1, depth, 1, 1, key="palace_b_idx") - 1
 
     scaf, S_seq, M_seq, P_seq, S_clean, Wms, Wsm_raw, G_clean, G_true = _get_4b_pipeline(Nh, depth)
 
@@ -276,12 +290,12 @@ def render_memory_palace_b():
 
     panels = [
         (true_sensory, f"Stored item #{t + 1}", G_true[:, t]),
-        (sensory_baseline_rec, f"Recalled item #{t + 1} (cos_sim={cos_sim(sensory_baseline_rec, true_sensory):.3f})", G_clean[0, :, t]),
+        (sensory_baseline_rec, f"Recalled item #{t + 1} (cos_sim={cos_sim(sensory_baseline_rec, true_sensory):.2f})", G_clean[0, :, t]),
         (true_item, "Mnemonic item", None),
         (noisy_item, "Noisy mnemonic item", None),
-        (sensory_est_noisy, f"Noisy item recon (cos_sim={cos_sim(sensory_est_noisy, true_sensory):.3f})", None),
-        (sensory_cleaned, f"Cleanup item recall #{t + 1} (cos_sim={cos_sim(sensory_cleaned, true_sensory):.3f})", g_cleanup),
-        (item_rec, f"Recalled mnemonic item (cos_sim={cos_sim(item_rec, true_item):.3f})", None),
+        (sensory_est_noisy, f"Noisy item recon (cos_sim={cos_sim(sensory_est_noisy, true_sensory):.2f})", None),
+        (sensory_cleaned, f"Cleanup item recall #{t + 1} (cos_sim={cos_sim(sensory_cleaned, true_sensory):.2f})", g_cleanup),
+        (item_rec, f"Recalled mnemonic item (cos_sim={cos_sim(item_rec, true_item):.2f})", None),
     ]
     grid_code = GridCode(module_periods=list(_PALACE_LAMBDAS))
     fig, axes = plt.subplots(2, len(panels), figsize=(3.1 * len(panels), 6.8))

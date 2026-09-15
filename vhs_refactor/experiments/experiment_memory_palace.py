@@ -155,9 +155,9 @@ def make_embedded_image_book_for_fig7(
     rng = np.random.default_rng(seed)
 
     npy_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                             "BW_miniimagenet_3600_60_60_full_rank.npy")
+                             "BW_miniimagenet_4600_60_60.npy")
     img = np.load(npy_path)
-    img_flat = img.reshape(3600, 3600).T
+    img_flat = img.reshape(img.shape[0], 3600).T
     # ponytail: float32로 낮춰서 메모리 절반 (Render 512MB 한도, 데모용이라 정밀도 손실 무해)
     # cast를 먼저 해야 float64 원본(img)이 살아있는 동안 float64 중간 복사본까지
     # 추가로 안 생김 (- 후 cast하면 float64 중간값이 잠깐 더 떠서 메모리 튐)
@@ -183,11 +183,15 @@ def make_embedded_image_book_for_fig7(
 
     n_positions = block_w * block_h
     # block이 (0,0)부터 시작해서 Nstates 전체를 정확히 덮는 경우(이 앱의 실제 사용
-    # 패턴) idx(=x*Npos+y)가 항상 k와 같은 순서로 증가 -> sbook_full은 img_embed의
-    # 앞 n_positions열과 완전히 동일. (예전엔 랜덤 배열 만들고 한 칸씩 덮어썼는데
+    # 패턴) idx(=x*Npos+y)가 항상 k와 같은 순서로 증가 -> sbook_full 앞부분은 img_embed의
+    # 앞 n_positions열과 순서대로 같다. (예전엔 랜덤 배열 만들고 한 칸씩 덮어썼는데
     # 전부 버려지는 값이라 낭비였음 + 계산도 전체 3600열에 대해 다 했음)
+    # 실제 이미지는 3600장뿐 -- n_positions이 이를 넘으면 초과분은 이미지 재사용(중복)
+    # 대신 원본 fig7 스크립트처럼 무작위 sensory 패턴으로 채운다(원본 이미지 유일성 유지).
     assert block_x0 == 0 and block_y0 == 0 and n_positions == Nstates and Npos == block_h
-    sbook_full = np.ascontiguousarray(img_embed[:, :n_positions])
+    n_real = min(n_positions, img_embed.shape[1])
+    sbook_full = rng.standard_normal((img_embed.shape[0], n_positions)).astype(np.float32)
+    sbook_full[:, :n_real] = img_embed[:, :n_real]
 
     return sbook_full, smin, smax
 
