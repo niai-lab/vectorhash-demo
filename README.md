@@ -71,15 +71,13 @@ https://github.com/FieteLab/VectorHaSH
 Please refer to and cite the original paper when using Vector-HaSH in research.
 
 ## Citation
-
+If you use this GUI demo in your work, please cite:
 ```bibtex
-@article{chandra2025episodic,
-  title={Episodic and associative memory from spatial scaffolds in the hippocampus},
-  author={Chandra, Sarthak and Sharma, Sugandha and Chaudhuri, Rishidev and Fiete, Ila},
-  journal={Nature},
-  volume={638},
-  pages={739--751},
-  year={2025},
-  doi={10.1038/s41586-024-08392-y}
+@software{yang2026vectorhashdemo,
+  author = {Yang, Jaeho and Yoon, Kijung},
+  title = {Vector-HaSH GUI Demo},
+  year = {2026},
+  url = {https://github.com/niai-lab/vectorhash-demo},
+  note = {Interactive GUI demonstration of Vector-HaSH}
 }
 ```
