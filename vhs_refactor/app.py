@@ -28,14 +28,12 @@ from experiments.experiment_item_capacity import (
 from experiments.experiment_spatial_navigation import (
     build_fig4c_demo, build_novel_trajectory,
     demo_revisit_predictions, demo_unvisited_by_distance, plot_unvisited_distance_map,
-    plot_grid_modules_square,
 )
 from experiments.experiment_memory_palace import (
     build_seq_scaffold, make_embedded_image_book_for_fig7,
     make_hairpin_path, path_to_indices, recall_sequence_once, cos_sim,
 )
 from src.assoc_utils_np import pseudotrain_Wps, pseudotrain_Wsp
-from grid_utils import GridCode
 
 st.set_page_config(page_title="Vector-HaSH demo", layout="wide")
 
@@ -47,7 +45,7 @@ div[data-testid="stVerticalBlock"] { gap: 0.4rem; }
 div[data-testid="stHorizontalBlock"] { gap: 0.4rem; }
 button p { font-size: 0.75rem; }
 button[data-testid^="stBaseButton"] { padding-left: 0.25rem; padding-right: 0.25rem; min-width: 0; }
-.st-key-item_memory_fig div[data-testid="stImage"] { max-width: 65% !important; margin-left: auto !important; margin-right: auto !important; }
+.st-key-item_memory_fig div[data-testid="stImage"] { max-width: 75% !important; margin-left: auto !important; margin-right: auto !important; }
 .st-key-item_memory_fig div[data-testid="stImage"] img { width: 100% !important; height: auto !important; }
 .st-key-spatial_memory_figs div[data-testid="stImage"] { max-width: 90% !important; margin-left: auto !important; margin-right: auto !important; }
 .st-key-spatial_memory_figs div[data-testid="stImage"] img { width: 100% !important; height: auto !important; }
@@ -255,7 +253,7 @@ def _get_4b_pipeline(Nh, depth):
                                              return_grid=True, Wps=Wps, Wsp=Wsp)
     S_addr = np.sign(S_clean[0])
     Wms = M_seq @ np.linalg.pinv(S_addr)          # 주소 -> new item
-    Wsm_raw = S_seq @ np.linalg.pinv(M_seq)       # new item -> sensory (원본 스케일)
+    Wsm_raw = S_clean[0] @ np.linalg.pinv(M_seq)  # new item -> recalled sensory (원본 스케일)
     G_true = scaf["gbook_flat"][:, idxs_seq]
     return scaf, S_seq, M_seq, P_seq, S_clean, Wms, Wsm_raw, G_clean, G_true, Wps, Wsp
 
@@ -283,49 +281,43 @@ def _recover(_scaf, _P_seq, _M_seq, _Wms, _Wsm_raw, _Wps, _Wsp, Nh, depth, t, no
 
 
 def render_memory_palace_b():
-    st.header("3. Memory Palace")
+    Nh = 200
+    st.header(f"3. Memory Palace ($N_h={Nh}$, $S \\in \\mathbb{{R}}^{{60 \\times 60}}$)")
     Ns = _PALACE_NS
     img_h = img_w = int(round(np.sqrt(Ns)))
     _, _, idxs_all, _, _ = _get_palace_books()
     n_cards_full = len(idxs_all)
 
     col1, col2 = st.columns(2)
-    Nh = stepper_slider("$N_h$", 10, 400, 200, 5, key="palace_b_Nh", container=col1)
-    n_cards = stepper_slider("$N_m$", 101, min(4000, n_cards_full), min(1000, n_cards_full), 50,
+    n_cards_min = Nh + 1
+    n_cards = stepper_slider("$N_m$", n_cards_min, min(4000, n_cards_full), min(1000, n_cards_full), 50,
                               key="palace_b_Nm", container=col2)
+    depth_max = max(400, n_cards)
+    depth_min = min(Nh + 1, depth_max)
+    depth = stepper_slider("$N_s$", depth_min, depth_max, min(max(30, depth_min), depth_max), 1,
+                            key="palace_b_depth", container=col1)
     col3, col4 = st.columns(2)
-    depth = stepper_slider("$N_s$", 2, n_cards, min(30, n_cards), 1, key="palace_b_depth", container=col3)
-    noise_ratio_vis = stepper_slider("Noise ratio", 0.0, 0.9, 0.3, 0.1, key="palace_b_noise_ratio", container=col4)
-    t = stepper_slider("Item index", 1, depth, 1, 1, key="palace_b_idx") - 1
+    t = stepper_slider("Item index", 1, depth, 1, 1, key="palace_b_idx", container=col3) - 1
+    noise_ratio_vis = stepper_slider("Noise ratio", 0.0, 0.2, 0.05, 0.05, key="palace_b_noise_ratio", container=col4)
 
-    scaf, S_seq, M_seq, P_seq, S_clean, Wms, Wsm_raw, G_clean, G_true, Wps, Wsp = _get_4b_pipeline(Nh, depth)
+    scaf, _S_seq, M_seq, P_seq, S_clean, Wms, Wsm_raw, _G_clean, _G_true, Wps, Wsp = _get_4b_pipeline(Nh, depth)
 
-    true_sensory = S_seq[:, t]
     sensory_baseline_rec = S_clean[0, :, t]
     true_item = M_seq[:, t]
-    noisy_item, sensory_est_noisy, sensory_cleaned, item_rec, g_cleanup = _recover(
+    noisy_item, sensory_est_noisy, sensory_cleaned, item_rec, _g_cleanup = _recover(
         scaf, P_seq, M_seq, Wms, Wsm_raw, Wps, Wsp, Nh, depth, t, noise_ratio_vis)
 
     panels = [
-        (true_sensory, f"Stored item #{t + 1}", G_true[:, t]),
-        (sensory_baseline_rec, f"Recalled item #{t + 1} (cos_sim={cos_sim(sensory_baseline_rec, true_sensory):.2f})", G_clean[0, :, t]),
-        (true_item, "Mnemonic item", None),
-        (noisy_item, "Noisy mnemonic item", None),
-        (sensory_est_noisy, f"Noisy item recon (cos_sim={cos_sim(sensory_est_noisy, true_sensory):.2f})", None),
-        (sensory_cleaned, f"Cleanup item recall #{t + 1} (cos_sim={cos_sim(sensory_cleaned, true_sensory):.2f})", g_cleanup),
-        (item_rec, f"Recalled mnemonic item (cos_sim={cos_sim(item_rec, true_item):.2f})", None),
+        (noisy_item, "Noisy mnemonic item"),
+        (sensory_est_noisy, "Noisy item recon"),
+        (sensory_cleaned, f"Cleanup item recall #{t + 1} (cos_sim={cos_sim(sensory_cleaned, sensory_baseline_rec):.2f})"),
+        (item_rec, f"Recalled mnemonic item (cos_sim={cos_sim(item_rec, true_item):.2f})"),
     ]
-    grid_code = GridCode(module_periods=list(_PALACE_LAMBDAS))
-    fig, axes = plt.subplots(2, len(panels), figsize=(3.1 * len(panels), 6.8))
-    for col, (vec, title, g) in enumerate(panels):
-        axes[0, col].imshow(vec.reshape(img_h, img_w), cmap="gray")
-        axes[0, col].set_title(title, fontsize=9)
-        axes[0, col].set_xticks([]); axes[0, col].set_yticks([])
-        if g is None:
-            axes[1, col].axis("off")
-        else:
-            plot_grid_modules_square(axes[1, col], grid_code, g)
-            axes[1, col].set_title("Grid state", fontsize=9)
+    fig, axes = plt.subplots(1, len(panels), figsize=(3.1 * len(panels), 3.4))
+    for col, (vec, title) in enumerate(panels):
+        axes[col].imshow(vec.reshape(img_h, img_w), cmap="gray")
+        axes[col].set_title(title, fontsize=8)
+        axes[col].set_xticks([]); axes[col].set_yticks([])
     plt.tight_layout()
     plt.show()
 
