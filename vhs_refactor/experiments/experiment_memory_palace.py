@@ -153,6 +153,7 @@ def make_embedded_image_book_for_fig7(
     seed=0,
     shuffle_images=False,
     use_tanh_inverse=True,
+    npy_filename="BW_miniimagenet_4600_60_60.npy",
 ):
     """VectorHASH_fig7.py의 make_embedded_image_book_for_fig7과 동일.
     실제 MiniImageNet 이미지를 block_w x block_h 위치 블록에 심어 넣고,
@@ -160,9 +161,9 @@ def make_embedded_image_book_for_fig7(
     rng = np.random.default_rng(seed)
 
     npy_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                             "BW_miniimagenet_4600_60_60.npy")
+                             npy_filename)
     img = np.load(npy_path)
-    img_flat = img.reshape(img.shape[0], 3600).T
+    img_flat = img.reshape(img.shape[0], Ns).T
     # ponytail: float32로 낮춰서 메모리 절반 (Render 512MB 한도, 데모용이라 정밀도 손실 무해)
     # cast를 먼저 해야 float64 원본(img)이 살아있는 동안 float64 중간 복사본까지
     # 추가로 안 생김 (- 후 cast하면 float64 중간값이 잠깐 더 떠서 메모리 튐)
