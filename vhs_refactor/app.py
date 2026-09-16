@@ -173,14 +173,17 @@ def render_spatial_memory():
 # Npos=70 -> Nstates=4900 (N_m 슬라이더 최대 4000을 커버하기 위해 (2,3,5)에서 확장).
 # =========================================================================
 _PALACE_LAMBDAS = (2, 5, 7)
-_PALACE_NS = 3600
+_PALACE_NS = 900
 _PALACE_SEED = 0
+_PALACE_CARD_SEED = int(np.random.default_rng().integers(0, 2**31 - 1))  # 서버 재시작마다 카드 배치 바뀜
+_PALACE_CARD_FOLDER = "number_card_30x30"
+_PALACE_SENSORY_NPY = "BW_miniimagenet_5000_30_30.npy"
 
 
 def _load_number_card_images_grayscale(numbers):
-    """number_card_60x60/ 폴더(1~999, 미리 렌더링해둔 PNG)에서 numbers에 해당하는
+    """number_card_30x30/ 폴더(미리 렌더링해둔 PNG)에서 numbers에 해당하는
     카드만 그레이스케일로 불러와 (Ns, len(numbers)) 형태로 반환."""
-    folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "number_card_60x60")
+    folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", _PALACE_CARD_FOLDER)
     imgs = [np.array(Image.open(os.path.join(folder, f"{n:03d}.png")).convert("L"), dtype=np.float64)
             for n in numbers]
     arr = np.stack(imgs, axis=0)
@@ -220,8 +223,9 @@ def _get_palace_books():
     sbook_old, _, _ = make_embedded_image_book_for_fig7(
         _PALACE_NS, Nstates, Npos, 0, 0, block_w, block_h,
         seed=_PALACE_SEED, shuffle_images=False, use_tanh_inverse=True,
+        npy_filename=_PALACE_SENSORY_NPY,
     )
-    mbook_new = _make_numbered_card_book(_PALACE_NS, Nstates, Npos, block_w, block_h, _PALACE_SEED)
+    mbook_new = _make_numbered_card_book(_PALACE_NS, Nstates, Npos, block_w, block_h, _PALACE_CARD_SEED)
     path_all = make_hairpin_path(block_w, block_h, 0, 0)
     idxs_all = path_to_indices(path_all, Npos)
     return sbook_old, mbook_new, idxs_all, block_w, block_h
@@ -281,8 +285,8 @@ def _recover(_scaf, _P_seq, _M_seq, _Wms, _Wsm_raw, _Wps, _Wsp, Nh, depth, t, no
 
 
 def render_memory_palace_b():
-    Nh = 200
-    st.header(f"3. Memory Palace ($N_h={Nh}$, $S \\in \\mathbb{{R}}^{{60 \\times 60}}$)")
+    Nh = 100
+    st.header(f"3. Memory Palace ($N_h={Nh}$, $S \\in \\mathbb{{R}}^{{30 \\times 30}}$)")
     Ns = _PALACE_NS
     img_h = img_w = int(round(np.sqrt(Ns)))
     _, _, idxs_all, _, _ = _get_palace_books()
@@ -290,15 +294,15 @@ def render_memory_palace_b():
 
     col1, col2 = st.columns(2)
     n_cards_min = Nh + 1
-    n_cards = stepper_slider("$N_m$", n_cards_min, min(4000, n_cards_full), min(1000, n_cards_full), 50,
+    n_cards = stepper_slider("$N_m$", n_cards_min, min(1000, n_cards_full), min(400, n_cards_full), 50,
                               key="palace_b_Nm", container=col2)
     depth_max = max(400, n_cards)
     depth_min = min(Nh + 1, depth_max)
-    depth = stepper_slider("$N_s$", depth_min, depth_max, min(max(30, depth_min), depth_max), 1,
+    depth = stepper_slider("$N_s$", depth_min, depth_max, min(max(150, depth_min), depth_max), 1,
                             key="palace_b_depth", container=col1)
     col3, col4 = st.columns(2)
     t = stepper_slider("Item index", 1, depth, 1, 1, key="palace_b_idx", container=col3) - 1
-    noise_ratio_vis = stepper_slider("Noise ratio", 0.0, 0.2, 0.05, 0.05, key="palace_b_noise_ratio", container=col4)
+    noise_ratio_vis = stepper_slider("Noise ratio", 0.0, 0.2, 0.0, 0.05, key="palace_b_noise_ratio", container=col4)
 
     scaf, _S_seq, M_seq, P_seq, S_clean, Wms, Wsm_raw, _G_clean, _G_true, Wps, Wsp = _get_4b_pipeline(Nh, depth)
 
@@ -308,8 +312,8 @@ def render_memory_palace_b():
         scaf, P_seq, M_seq, Wms, Wsm_raw, Wps, Wsp, Nh, depth, t, noise_ratio_vis)
 
     panels = [
-        (noisy_item, "Noisy mnemonic item"),
-        (sensory_est_noisy, "Noisy item recon"),
+        (noisy_item, "mnemonic item"),
+        (sensory_est_noisy, "item recon"),
         (sensory_cleaned, f"Cleanup item recall #{t + 1} (cos_sim={cos_sim(sensory_cleaned, sensory_baseline_rec):.2f})"),
         (item_rec, f"Recalled mnemonic item (cos_sim={cos_sim(item_rec, true_item):.2f})"),
     ]
