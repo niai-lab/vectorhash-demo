@@ -34,6 +34,7 @@ from experiments.experiment_memory_palace import (
     build_seq_scaffold, make_embedded_image_book_for_fig7,
     make_hairpin_path, path_to_indices, recall_sequence_once, cos_sim,
 )
+from src.assoc_utils_np import pseudotrain_Wps, pseudotrain_Wsp
 from grid_utils import GridCode
 
 st.set_page_config(page_title="Vector-HaSH demo", layout="wide")
@@ -245,12 +246,40 @@ def _get_4b_pipeline(Nh, depth):
     S_seq = sbook_old[:, idxs_seq]
     M_seq = mbook_new[:, idxs_seq]
 
-    S_clean, G_clean = recall_sequence_once(scaf, S_seq, P_seq, depth, np.random.default_rng(1), return_grid=True)
+    # Wps/Wsp는 S_seq/P_seq/depth에만 의존(어느 item을 조회하든 동일)하므로 여기서
+    # 한 번만 학습해 반환 -- _recover()가 item index 바뀔 때마다 이 pinv(depth 전체
+    # 크기)를 다시 돌리지 않고 재사용하기 위함.
+    Wps = pseudotrain_Wps(P_seq, S_seq, depth)
+    Wsp = pseudotrain_Wsp(S_seq, P_seq, depth)
+    S_clean, G_clean = recall_sequence_once(scaf, S_seq, P_seq, depth, np.random.default_rng(1),
+                                             return_grid=True, Wps=Wps, Wsp=Wsp)
     S_addr = np.sign(S_clean[0])
     Wms = M_seq @ np.linalg.pinv(S_addr)          # 주소 -> new item
     Wsm_raw = S_seq @ np.linalg.pinv(M_seq)       # new item -> sensory (원본 스케일)
     G_true = scaf["gbook_flat"][:, idxs_seq]
-    return scaf, S_seq, M_seq, P_seq, S_clean, Wms, Wsm_raw, G_clean, G_true
+    return scaf, S_seq, M_seq, P_seq, S_clean, Wms, Wsm_raw, G_clean, G_true, Wps, Wsp
+
+
+@st.cache_data(show_spinner=False)
+def _recover(_scaf, _P_seq, _M_seq, _Wms, _Wsm_raw, _Wps, _Wsp, Nh, depth, t, noise_ratio_vis):
+    # item index(t)만 바뀔 때마다 recall_sequence_once가 depth 전체를 재학습(pinv)하고
+    # depth개 위치 전부 cleanup 루프를 도는 게 느려서 (Nh, depth, t, noise_ratio_vis)
+    # 기준으로 캐싱 + t 하나짜리 컬럼만 회상하도록 축소.
+    # Wps/Wsp(_get_4b_pipeline에서 이미 학습됨)는 S_query가 뭐든 동일한 선형사상이라
+    # t 하나만 조회할 때도 재학습 없이 그대로 재사용 가능(depth 무관, O(1)).
+    # 배열 인자(_ 접두사)는 해시 대상에서 제외되므로, 캐시 키 구분을 위해
+    # Nh/depth를 별도 인자로 받는다(안 그러면 Nh만 바뀌어도 이전 파이프라인의
+    # 결과가 잘못 재사용될 수 있음).
+    true_item = _M_seq[:, t]
+    noisy_item = true_item if noise_ratio_vis == 0.0 else apply_noise(true_item, "salt_and_pepper", noise_ratio_vis, seed=2)
+    sensory_est_noisy = _Wsm_raw @ noisy_item
+    S_query_col = sensory_est_noisy[:, None]
+    S_rec, G_rec = recall_sequence_once(_scaf, None, _P_seq, 1, np.random.default_rng(1),
+                                         S_query=S_query_col, return_grid=True, Wps=_Wps, Wsp=_Wsp)
+    sensory_cleaned = S_rec[0, :, 0]
+    addr_clean = np.sign(sensory_cleaned)
+    item_rec = _Wms @ addr_clean
+    return noisy_item, sensory_est_noisy, sensory_cleaned, item_rec, G_rec[0, :, 0]
 
 
 def render_memory_palace_b():
@@ -269,24 +298,13 @@ def render_memory_palace_b():
     noise_ratio_vis = stepper_slider("Noise ratio", 0.0, 0.9, 0.3, 0.1, key="palace_b_noise_ratio", container=col4)
     t = stepper_slider("Item index", 1, depth, 1, 1, key="palace_b_idx") - 1
 
-    scaf, S_seq, M_seq, P_seq, S_clean, Wms, Wsm_raw, G_clean, G_true = _get_4b_pipeline(Nh, depth)
-
-    def recover(noisy_item, tt):
-        sensory_est_noisy = Wsm_raw @ noisy_item
-        S_query = S_seq.copy()
-        S_query[:, tt] = sensory_est_noisy
-        S_rec, G_rec = recall_sequence_once(scaf, S_seq, P_seq, depth, np.random.default_rng(1),
-                                             S_query=S_query, return_grid=True)
-        sensory_cleaned = S_rec[0, :, tt]
-        addr_clean = np.sign(sensory_cleaned)
-        item_rec = Wms @ addr_clean
-        return sensory_est_noisy, sensory_cleaned, item_rec, G_rec[0, :, tt]
+    scaf, S_seq, M_seq, P_seq, S_clean, Wms, Wsm_raw, G_clean, G_true, Wps, Wsp = _get_4b_pipeline(Nh, depth)
 
     true_sensory = S_seq[:, t]
     sensory_baseline_rec = S_clean[0, :, t]
     true_item = M_seq[:, t]
-    noisy_item = true_item if noise_ratio_vis == 0.0 else apply_noise(true_item, "salt_and_pepper", noise_ratio_vis, seed=2)
-    sensory_est_noisy, sensory_cleaned, item_rec, g_cleanup = recover(noisy_item, t)
+    noisy_item, sensory_est_noisy, sensory_cleaned, item_rec, g_cleanup = _recover(
+        scaf, P_seq, M_seq, Wms, Wsm_raw, Wps, Wsp, Nh, depth, t, noise_ratio_vis)
 
     panels = [
         (true_sensory, f"Stored item #{t + 1}", G_true[:, t]),

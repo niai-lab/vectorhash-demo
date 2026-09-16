@@ -485,7 +485,7 @@ def _plot_novel_steps_grid(model, novel_model, selected, suptitle, show_row_labe
     # tight_layout()은 axes마다 get_tightbbox(텍스트 렌더링)를 다 계산해야 해서
     # 열 수가 많아지면(4x4=16 axes) 느림(~0.5s/call). 고정 여백으로 대체해서
     # 슬라이더 인터랙션마다 다시 그릴 때 빠르게.
-    fig.subplots_adjust(left=0.06, right=0.98, top=0.96, bottom=0.02, hspace=0.08, wspace=0.25)
+    fig.subplots_adjust(left=0.06, right=0.98, top=0.96, bottom=0.02, hspace=0.08, wspace=0)
 
     # ponytail: CSS(max-width:90%)가 figsize 상관없이 컨테이너 폭을 똑같이 맞춰버려서,
     # 원본 그림이 넓을수록(n_show 클수록) 같은 fontsize라도 화면상 더 작게 보임.

@@ -79,7 +79,7 @@ def path_to_indices(path_locations, Npos):
 
 
 def recall_sequence_once(scaf, S_seq, P_seq, Nseq, rng=None, noise_frac=0.0, skip_cleanup=False,
-                          S_query=None, return_grid=False):
+                          S_query=None, return_grid=False, Wps=None, Wsp=None):
     """
     노트북의 두 버전(무노이즈 버전 / noise_frac 버전)을 하나로 통합.
     - rng=None 또는 noise_frac=0 : 완전 결정론적(무노이즈) 회상
@@ -94,9 +94,14 @@ def recall_sequence_once(scaf, S_seq, P_seq, Nseq, rng=None, noise_frac=0.0, ski
       noise 낀 연속값 gin을 그대로 사용 -> 노이즈가 실제로 얼마나 표상을
       흐트러뜨리는지 시각화할 때 사용 (cleanup이 이걸 대부분 지워버리기 때문에,
       cleanup 이후 결과만 보면 노이즈 효과가 잘 안 보임).
+    - Wps/Wsp : 이미 학습된 걸 넘기면 pseudotrain을 건너뛴다. Wps/Wsp는 S_seq/P_seq/Nseq
+      에만 의존하고 S_query(어떤 항목을 조회하는지)와는 무관하므로, 같은 시퀀스에 대해
+      항목 하나만 다시 회상할 때 매번 재학습(pinv, depth 전체)하는 걸 피할 수 있다.
     """
-    Wps = pseudotrain_Wps(P_seq, S_seq, Nseq)
-    Wsp = pseudotrain_Wsp(S_seq, P_seq, Nseq)
+    if Wps is None:
+        Wps = pseudotrain_Wps(P_seq, S_seq, Nseq)
+    if Wsp is None:
+        Wsp = pseudotrain_Wsp(S_seq, P_seq, Nseq)
 
     S_query = S_seq if S_query is None else S_query
 
