@@ -79,7 +79,7 @@ def path_to_indices(path_locations, Npos):
 
 
 def recall_sequence_once(scaf, S_seq, P_seq, Nseq, rng=None, noise_frac=0.0, skip_cleanup=False,
-                          S_query=None, return_grid=False, Wps=None, Wsp=None):
+                          S_query=None, return_grid=False, return_states=False, Wps=None, Wsp=None):
     """
     노트북의 두 버전(무노이즈 버전 / noise_frac 버전)을 하나로 통합.
     - rng=None 또는 noise_frac=0 : 완전 결정론적(무노이즈) 회상
@@ -97,6 +97,9 @@ def recall_sequence_once(scaf, S_seq, P_seq, Nseq, rng=None, noise_frac=0.0, ski
     - Wps/Wsp : 이미 학습된 걸 넘기면 pseudotrain을 건너뛴다. Wps/Wsp는 S_seq/P_seq/Nseq
       에만 의존하고 S_query(어떤 항목을 조회하는지)와는 무관하므로, 같은 시퀀스에 대해
       항목 하나만 다시 회상할 때 매번 재학습(pinv, depth 전체)하는 걸 피할 수 있다.
+    - return_states=True : (S_rec, G_rec, pin, P_rec, gin)까지 반환. pin/gin은
+      cleanup 이전(query 직후) HPC/grid 상태, P_rec/G_rec은 cleanup 이후(retrieved)
+      HPC/grid 상태 -- Memory Palace 패널에서 HPC/Grid state를 시각화할 때 사용.
     """
     if Wps is None:
         Wps = pseudotrain_Wps(P_seq, S_seq, Nseq)
@@ -123,6 +126,8 @@ def recall_sequence_once(scaf, S_seq, P_seq, Nseq, rng=None, noise_frac=0.0, ski
 
     P_rec = nonlin(scaf["Wpg"] @ G_rec, scaf["thresh"])
     S_rec = Wsp @ P_rec
+    if return_states:
+        return S_rec, G_rec, pin, P_rec, gin
     return (S_rec, G_rec) if return_grid else S_rec
 
 
