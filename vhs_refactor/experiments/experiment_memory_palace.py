@@ -155,7 +155,7 @@ def make_embedded_image_book_for_fig7(
     use_tanh_inverse=True,
     npy_filename="BW_miniimagenet_4600_60_60.npy",
     position_order=None,
-    noise_frac=0.02,
+    noise_frac=0.05,
 ):
     """VectorHASH_fig7.py의 make_embedded_image_book_for_fig7과 동일.
     실제 MiniImageNet 이미지를 block_w x block_h 위치 블록에 심어 넣고,
