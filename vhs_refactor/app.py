@@ -228,17 +228,22 @@ def _get_4b_pipeline(Nh, depth):
     Wsp = pseudotrain_Wsp(S_seq, P_seq, depth)
     S_clean, G_clean = recall_sequence_once(scaf, S_seq, P_seq, depth, np.random.default_rng(1),
                                              return_grid=True, Wps=Wps, Wsp=Wsp)
-    S_addr = np.sign(S_clean[0])
-    # S_addr = sign(S_clean)로 이진화된 값이라 컬럼끼리 겹칠 수 있어 full column rank가
-    # 깨지기 쉬움(QR pinv로 계산해보니 실제로 폭발) -> SVD 기반 pinv 유지.
+    # S_addr = sign(S_clean)로 이진화된 값이라 컬럼끼리 겹치거나 선형종속되기 쉬움
+    # (실측: depth=100에서 rank 90/100, 중복 10개) -> sign() 직전에 고정 노이즈를
+    # 더해 tie-break. 이 noise_arr는 _recover()에도 그대로 넘겨서 조회 시점에 동일하게
+    # 더해야 함 -- 학습에만 넣고 조회는 그대로 두면 주소가 어긋나 recall cos-sim이
+    # 오히려 나빠짐(실측 확인).
+    noise_arr = 0.1 * np.random.default_rng(1).standard_normal(S_clean[0].shape)
+    S_addr = np.sign(S_clean[0] + noise_arr)
+    # S_addr full column rank 깨지기 쉬워(QR pinv로 계산해보니 실제로 폭발) SVD 기반 pinv 유지.
     Wms = M_seq @ la.pinv(S_addr)          # 주소 -> new item
     Wsm_raw = S_clean[0] @ qr_pinv(M_seq)  # new item -> recalled sensory (원본 스케일, M은 full column rank)
     G_true = scaf["gbook_flat"][:, idxs_seq]
-    return scaf, S_seq, M_seq, P_seq, S_clean, Wms, Wsm_raw, G_clean, G_true, Wps, Wsp
+    return scaf, S_seq, M_seq, P_seq, S_clean, Wms, Wsm_raw, G_clean, G_true, Wps, Wsp, noise_arr
 
 
 @st.cache_data(show_spinner=False)
-def _recover(_scaf, _P_seq, _M_seq, _Wms, _Wsm_raw, _Wps, _Wsp, Nh, depth, t, noise_ratio_vis):
+def _recover(_scaf, _P_seq, _M_seq, _Wms, _Wsm_raw, _Wps, _Wsp, _noise_arr, Nh, depth, t, noise_ratio_vis):
     # item index(t)만 바뀔 때마다 recall_sequence_once가 depth 전체를 재학습(pinv)하고
     # depth개 위치 전부 cleanup 루프를 도는 게 느려서 (Nh, depth, t, noise_ratio_vis)
     # 기준으로 캐싱 + t 하나짜리 컬럼만 회상하도록 축소.
@@ -254,7 +259,7 @@ def _recover(_scaf, _P_seq, _M_seq, _Wms, _Wsm_raw, _Wps, _Wsp, Nh, depth, t, no
     S_rec, G_rec = recall_sequence_once(_scaf, None, _P_seq, 1, np.random.default_rng(1),
                                          S_query=S_query_col, return_grid=True, Wps=_Wps, Wsp=_Wsp)
     sensory_cleaned = S_rec[0, :, 0]
-    addr_clean = np.sign(sensory_cleaned)
+    addr_clean = np.sign(sensory_cleaned + _noise_arr[:, t])  # 학습 시점(S_addr)과 같은 tie-break 노이즈 재사용
     item_rec = _Wms @ addr_clean
     return noisy_item, sensory_est_noisy, sensory_cleaned, item_rec, G_rec[0, :, 0]
 
@@ -269,15 +274,15 @@ def render_memory_palace_b():
     depth = stepper_slider("$N_{s-item}$", 101, 120, 101, 1, key="palace_b_depth", container=col1)
     n_cards = stepper_slider("$N_{m-item}$", 101, 200, 101, 1, key="palace_b_Nm", container=col2)
     col3, col4 = st.columns(2)
-    t = stepper_slider("Item index", 1, depth, 1, 1, key="palace_b_idx", container=col3) - 1
+    t = stepper_slider("$m$-$item$ index", 1, min(depth, n_cards), 1, 1, key="palace_b_idx", container=col3) - 1
     noise_ratio_vis = stepper_slider("Noise ratio", 0.0, 0.2, 0.0, 0.05, key="palace_b_noise_ratio", container=col4)
 
-    scaf, S_seq, M_seq, P_seq, _S_clean, Wms, Wsm_raw, _G_clean, _G_true, Wps, Wsp = _get_4b_pipeline(Nh, depth)
+    scaf, S_seq, M_seq, P_seq, _S_clean, Wms, Wsm_raw, _G_clean, _G_true, Wps, Wsp, noise_arr = _get_4b_pipeline(Nh, depth)
 
     true_sensory = S_seq[:, t]
     true_item = M_seq[:, t]
     _noisy_item, _sensory_est_noisy, sensory_cleaned, item_rec, _g_cleanup = _recover(
-        scaf, P_seq, M_seq, Wms, Wsm_raw, Wps, Wsp, Nh, depth, t, noise_ratio_vis)
+        scaf, P_seq, M_seq, Wms, Wsm_raw, Wps, Wsp, noise_arr, Nh, depth, t, noise_ratio_vis)
 
     panels = [
         (true_sensory, "stored sensory item"),
