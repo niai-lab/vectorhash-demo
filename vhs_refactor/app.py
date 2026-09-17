@@ -4,6 +4,7 @@ os.environ.setdefault("OPENBLAS_NUM_THREADS", "24")  # 제한 없으면 OpenBLAS
 os.environ.setdefault("OMP_NUM_THREADS", "24")
 
 import numpy as np
+import scipy.linalg as la
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -21,7 +22,6 @@ cfg.DEFAULT_SCAFFOLD = cfg.ScaffoldConfig(
     connection_prob=0.6, threshold=0.5, nonlinearity="relu_threshold",
 )
 
-from PIL import Image
 from experiments.experiment_item_capacity import (
     prepare_sensory_data, get_mem_for_Nh_sweep, render_node_states_panel, apply_noise,
 )
@@ -33,7 +33,7 @@ from experiments.experiment_memory_palace import (
     build_seq_scaffold, make_embedded_image_book_for_fig7,
     make_hairpin_path, path_to_indices, recall_sequence_once, cos_sim,
 )
-from src.assoc_utils_np import pseudotrain_Wps, pseudotrain_Wsp
+from src.assoc_utils_np import pseudotrain_Wps, pseudotrain_Wsp, qr_pinv
 
 st.set_page_config(page_title="Vector-HaSH demo", layout="wide")
 
@@ -168,66 +168,39 @@ def render_spatial_memory():
 
 
 # =========================================================================
-# Memory Palace가 사용하는 데이터 소스: miniimagenet(old item) / 숫자카드(new item).
-# lambdas=(2,5,7), Ns=3600, seed=0으로 둘 다 동일해서 한 번만 계산해 공유한다.
+# Memory Palace가 사용하는 데이터 소스: Fashion-MNIST(sensory item) / MNIST(mnemonic item).
+# lambdas=(2,5,7), Ns=784(28x28), seed=0으로 둘 다 동일해서 한 번만 계산해 공유한다.
 # Npos=70 -> Nstates=4900 (N_m 슬라이더 최대 4000을 커버하기 위해 (2,3,5)에서 확장).
 # =========================================================================
 _PALACE_LAMBDAS = (2, 5, 7)
-_PALACE_NS = 900
+_PALACE_NS = 784
 _PALACE_SEED = 0
-_PALACE_CARD_SEED = int(np.random.default_rng().integers(0, 2**31 - 1))  # 서버 재시작마다 카드 배치 바뀜
-_PALACE_CARD_FOLDER = "number_card_30x30"
-_PALACE_SENSORY_NPY = "BW_miniimagenet_5000_30_30.npy"
+_PALACE_MNEMONIC_SEED = int(np.random.default_rng().integers(0, 2**31 - 1))  # 서버 재시작마다 mnemonic 배치 바뀜
+_PALACE_SENSORY_NPY = "BW_fashionmnist_5000_28_28.npy"
+_PALACE_MNEMONIC_NPY = "BW_mnist_5000_28_28.npy"
 
 
-def _load_number_card_images_grayscale(numbers):
-    """number_card_30x30/ 폴더(미리 렌더링해둔 PNG)에서 numbers에 해당하는
-    카드만 그레이스케일로 불러와 (Ns, len(numbers)) 형태로 반환."""
-    folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", _PALACE_CARD_FOLDER)
-    imgs = [np.array(Image.open(os.path.join(folder, f"{n:03d}.png")).convert("L"), dtype=np.float64)
-            for n in numbers]
-    arr = np.stack(imgs, axis=0)
-    return arr.reshape(len(numbers), -1).T
-
-
-@st.cache_data(max_entries=1, show_spinner="Rendering number cards...")
-def _make_numbered_card_book(Ns, Nstates, Npos, block_w, block_h, seed):
-    """block_w*block_h개 위치마다 1..n_positions 숫자 카드를 중복 없이 랜덤 순서로
-    배치한다. 카드가 전부 유일하므로 워터마크 없이도 pinv가 항상 full rank."""
-    rng = np.random.default_rng(seed)
-    img_h = img_w = int(round(np.sqrt(Ns)))
-    assert img_h * img_w == Ns
-
-    n_positions = block_w * block_h
-    numbers = rng.permutation(n_positions) + 1
-    img_flat = _load_number_card_images_grayscale(numbers).astype(np.float32)
-    img_flat += rng.standard_normal(img_flat.shape).astype(np.float32) * 10.0
-    img_flat -= img_flat.mean()
-
-    smin, smax = np.amin(img_flat), np.amax(img_flat)
-    scale = 1.9 / (smax - smin)
-    shift = -0.95 - smin * scale
-    img_flat *= scale
-    img_flat += shift
-    np.arctanh(img_flat, out=img_flat)
-
-    assert n_positions == Nstates and Npos == block_h
-    return img_flat
-
-
-@st.cache_data(max_entries=1, show_spinner="Loading miniimagenet book...")
+@st.cache_data(max_entries=1, show_spinner="Loading sensory/mnemonic books...")
 def _get_palace_books():
     Npos = int(np.prod(_PALACE_LAMBDAS))
     block_w = block_h = Npos
     Nstates = Npos * Npos
+    path_all = make_hairpin_path(block_w, block_h, 0, 0)
+    idxs_all = path_to_indices(path_all, Npos)
+    # position_order=idxs_all: 실제 이미지를 raw idx 순서가 아니라 palace 방문(hairpin)
+    # 순서로 채운다 -- 실제 이미지 수(1200)가 Nstates(4900)보다 훨씬 적은데, raw idx
+    # 순서로 채우면 방문 경로 초반부(depth 101~200)가 idx 공간에서 step=Npos로 듬성듬성
+    # 튀어서 대부분 노이즈만 뽑히는 문제가 있었음.
     sbook_old, _, _ = make_embedded_image_book_for_fig7(
         _PALACE_NS, Nstates, Npos, 0, 0, block_w, block_h,
         seed=_PALACE_SEED, shuffle_images=False, use_tanh_inverse=True,
-        npy_filename=_PALACE_SENSORY_NPY,
+        npy_filename=_PALACE_SENSORY_NPY, position_order=idxs_all,
     )
-    mbook_new = _make_numbered_card_book(_PALACE_NS, Nstates, Npos, block_w, block_h, _PALACE_CARD_SEED)
-    path_all = make_hairpin_path(block_w, block_h, 0, 0)
-    idxs_all = path_to_indices(path_all, Npos)
+    mbook_new, _, _ = make_embedded_image_book_for_fig7(
+        _PALACE_NS, Nstates, Npos, 0, 0, block_w, block_h,
+        seed=_PALACE_MNEMONIC_SEED, shuffle_images=True, use_tanh_inverse=True,
+        npy_filename=_PALACE_MNEMONIC_NPY, position_order=idxs_all,
+    )
     return sbook_old, mbook_new, idxs_all, block_w, block_h
 
 
@@ -256,8 +229,10 @@ def _get_4b_pipeline(Nh, depth):
     S_clean, G_clean = recall_sequence_once(scaf, S_seq, P_seq, depth, np.random.default_rng(1),
                                              return_grid=True, Wps=Wps, Wsp=Wsp)
     S_addr = np.sign(S_clean[0])
-    Wms = M_seq @ np.linalg.pinv(S_addr)          # 주소 -> new item
-    Wsm_raw = S_clean[0] @ np.linalg.pinv(M_seq)  # new item -> recalled sensory (원본 스케일)
+    # S_addr = sign(S_clean)로 이진화된 값이라 컬럼끼리 겹칠 수 있어 full column rank가
+    # 깨지기 쉬움(QR pinv로 계산해보니 실제로 폭발) -> SVD 기반 pinv 유지.
+    Wms = M_seq @ la.pinv(S_addr)          # 주소 -> new item
+    Wsm_raw = S_clean[0] @ qr_pinv(M_seq)  # new item -> recalled sensory (원본 스케일, M은 full column rank)
     G_true = scaf["gbook_flat"][:, idxs_seq]
     return scaf, S_seq, M_seq, P_seq, S_clean, Wms, Wsm_raw, G_clean, G_true, Wps, Wsp
 
@@ -286,36 +261,29 @@ def _recover(_scaf, _P_seq, _M_seq, _Wms, _Wsm_raw, _Wps, _Wsp, Nh, depth, t, no
 
 def render_memory_palace_b():
     Nh = 100
-    st.header(f"3. Memory Palace ($N_h={Nh}$, $S \\in \\mathbb{{R}}^{{30 \\times 30}}$)")
+    st.header(f"3. Memory Palace ($N_h={Nh}$, $S \\in \\mathbb{{R}}^{{28 \\times 28}}$)")
     Ns = _PALACE_NS
     img_h = img_w = int(round(np.sqrt(Ns)))
-    _, _, idxs_all, _, _ = _get_palace_books()
-    n_cards_full = len(idxs_all)
 
     col1, col2 = st.columns(2)
-    n_cards_min = Nh + 1
-    n_cards = stepper_slider("$N_m$", n_cards_min, min(1000, n_cards_full), min(400, n_cards_full), 50,
-                              key="palace_b_Nm", container=col2)
-    depth_max = max(400, n_cards)
-    depth_min = min(Nh + 1, depth_max)
-    depth = stepper_slider("$N_s$", depth_min, depth_max, min(max(150, depth_min), depth_max), 1,
-                            key="palace_b_depth", container=col1)
+    depth = stepper_slider("$N_{s-item}$", 101, 120, 101, 1, key="palace_b_depth", container=col1)
+    n_cards = stepper_slider("$N_{m-item}$", 101, 200, 101, 1, key="palace_b_Nm", container=col2)
     col3, col4 = st.columns(2)
     t = stepper_slider("Item index", 1, depth, 1, 1, key="palace_b_idx", container=col3) - 1
     noise_ratio_vis = stepper_slider("Noise ratio", 0.0, 0.2, 0.0, 0.05, key="palace_b_noise_ratio", container=col4)
 
-    scaf, _S_seq, M_seq, P_seq, S_clean, Wms, Wsm_raw, _G_clean, _G_true, Wps, Wsp = _get_4b_pipeline(Nh, depth)
+    scaf, S_seq, M_seq, P_seq, _S_clean, Wms, Wsm_raw, _G_clean, _G_true, Wps, Wsp = _get_4b_pipeline(Nh, depth)
 
-    sensory_baseline_rec = S_clean[0, :, t]
+    true_sensory = S_seq[:, t]
     true_item = M_seq[:, t]
-    noisy_item, sensory_est_noisy, sensory_cleaned, item_rec, _g_cleanup = _recover(
+    _noisy_item, _sensory_est_noisy, sensory_cleaned, item_rec, _g_cleanup = _recover(
         scaf, P_seq, M_seq, Wms, Wsm_raw, Wps, Wsp, Nh, depth, t, noise_ratio_vis)
 
     panels = [
-        (noisy_item, "mnemonic item"),
-        (sensory_est_noisy, "item recon"),
-        (sensory_cleaned, f"Cleanup item recall #{t + 1} (cos_sim={cos_sim(sensory_cleaned, sensory_baseline_rec):.2f})"),
-        (item_rec, f"Recalled mnemonic item (cos_sim={cos_sim(item_rec, true_item):.2f})"),
+        (true_sensory, "stored sensory item"),
+        (sensory_cleaned, f"recalled sensory item (cos-sim={cos_sim(sensory_cleaned, true_sensory):.2f})"),
+        (true_item, "stored mnemonic item"),
+        (item_rec, f"recalled mnemonic item (cos-sim={cos_sim(item_rec, true_item):.2f})"),
     ]
     fig, axes = plt.subplots(1, len(panels), figsize=(3.1 * len(panels), 3.4))
     for col, (vec, title) in enumerate(panels):

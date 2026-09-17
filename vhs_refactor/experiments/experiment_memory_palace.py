@@ -154,6 +154,8 @@ def make_embedded_image_book_for_fig7(
     shuffle_images=False,
     use_tanh_inverse=True,
     npy_filename="BW_miniimagenet_4600_60_60.npy",
+    position_order=None,
+    noise_frac=0.02,
 ):
     """VectorHASH_fig7.py의 make_embedded_image_book_for_fig7과 동일.
     실제 MiniImageNet 이미지를 block_w x block_h 위치 블록에 심어 넣고,
@@ -170,6 +172,11 @@ def make_embedded_image_book_for_fig7(
     img_flat = img_flat.astype(np.float32)
     del img
     img_flat -= img_flat.mean()
+
+    if noise_frac > 0:
+        # 눈으로는 거의 안 보이는 소량 노이즈(픽셀 std의 noise_frac배) -- 완전히
+        # 동일한 컬럼(중복 이미지)이 있어도 full-rank 깨지지 않도록 살짝 흔들어둠.
+        img_flat += (rng.standard_normal(img_flat.shape) * (noise_frac * img_flat.std())).astype(img_flat.dtype)
 
     if shuffle_images:
         perm = rng.permutation(img_flat.shape[1])
@@ -197,7 +204,14 @@ def make_embedded_image_book_for_fig7(
     assert block_x0 == 0 and block_y0 == 0 and n_positions == Nstates and Npos == block_h
     n_real = min(n_positions, img_embed.shape[1])
     sbook_full = rng.standard_normal((img_embed.shape[0], n_positions)).astype(np.float32)
-    sbook_full[:, :n_real] = img_embed[:, :n_real]
+    if position_order is None:
+        sbook_full[:, :n_real] = img_embed[:, :n_real]
+    else:
+        # position_order[:n_real] 순서로 채움 -- 방문 순서(hairpin) 기준 앞쪽 depth개가
+        # 항상 실제 이미지를 받도록. raw idx(=x*Npos+y) 순서로 채우면 경로 초반부가
+        # idx 공간에서 듬성듬성 튀어서(step=Npos) 실제 이미지 개수(n_real)보다 depth가
+        # 훨씬 작아도 노이즈만 뽑히는 문제가 있었음.
+        sbook_full[:, position_order[:n_real]] = img_embed[:, :n_real]
 
     return sbook_full, smin, smax
 

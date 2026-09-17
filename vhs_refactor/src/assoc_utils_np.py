@@ -4,8 +4,9 @@
 # import numpy as np
 
 from scipy.ndimage import gaussian_filter1d
+import scipy.linalg as la
 from numpy.random import rand
-from numpy.random import randn 
+from numpy.random import randn
 from numpy.random import randint
 from src.assoc_utils_np_2D import module_wise_NN_2d
 # import cupy as np
@@ -76,13 +77,23 @@ def train_gcpc(pbook, gbook, Npatts):
     return (1/Npatts)*np.einsum('ij, klj -> kil', gbook[:,:Npatts], pbook[:,:,:Npatts])  
     
 
+def qr_pinv(A):
+    """Left-pseudoinverse via economic QR -- A must have full column rank
+    (rows >> cols, e.g. sensory/mnemonic item books). Much cheaper than SVD-based
+    pinv, but wrong (or errors on singular R) if A is rank-deficient."""
+    Q, R = la.qr(A, mode="economic")
+    return la.solve_triangular(R, Q.T)
+
+
 def pseudotrain_Wsp(sbook, ca1book, Npatts):
-    ca1inv = np.linalg.pinv(ca1book[:, :, :Npatts])
-    return np.einsum('ij, kjl -> kil', sbook[:,:Npatts], ca1inv[:,:Npatts,:]) 
+    # H(hidden/place code): SVD-based, rank not guaranteed. scipy.linalg.pinv only
+    # takes 2D input (unlike np.linalg.pinv), so loop over the leading nruns axis.
+    ca1inv = np.stack([la.pinv(m) for m in ca1book[:, :, :Npatts]])
+    return np.einsum('ij, kjl -> kil', sbook[:,:Npatts], ca1inv[:,:Npatts,:])
 
 def pseudotrain_Wps(ca1book, sbook, Npatts):
-    sbookinv = np.linalg.pinv(sbook[:, :Npatts])
-    return np.einsum('ij, kli -> klj', sbookinv[:Npatts,:], ca1book[:,:,:Npatts]) 
+    sbookinv = qr_pinv(sbook[:, :Npatts])  # S(sensory): full column rank by construction, QR is cheaper
+    return np.einsum('ij, kli -> klj', sbookinv[:Npatts,:], ca1book[:,:,:Npatts])
     
 
 def pseudotrain_Wpp(ca1book, Npatts):
