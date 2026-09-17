@@ -24,11 +24,14 @@ cfg.DEFAULT_SCAFFOLD = cfg.ScaffoldConfig(
 
 from experiments.experiment_item_capacity import (
     prepare_sensory_data, get_mem_for_Nh_sweep, render_node_states_panel, apply_noise,
+    reshape_sensory_to_image,
 )
 from experiments.experiment_spatial_navigation import (
     build_fig4c_demo, build_novel_trajectory,
     demo_revisit_predictions, demo_unvisited_by_distance, plot_unvisited_distance_map,
+    plot_grid_modules_square,
 )
+from grid_utils import GridCode
 from experiments.experiment_memory_palace import (
     build_seq_scaffold, make_embedded_image_book_for_fig7,
     make_hairpin_path, path_to_indices, recall_sequence_once, cos_sim,
@@ -49,6 +52,8 @@ button[data-testid^="stBaseButton"] { padding-left: 0.25rem; padding-right: 0.25
 .st-key-item_memory_fig div[data-testid="stImage"] img { width: 100% !important; height: auto !important; }
 .st-key-spatial_memory_figs div[data-testid="stImage"] { max-width: 90% !important; margin-left: auto !important; margin-right: auto !important; }
 .st-key-spatial_memory_figs div[data-testid="stImage"] img { width: 100% !important; height: auto !important; }
+.st-key-palace_b_fig div[data-testid="stImage"] { max-width: 75% !important; margin-left: auto !important; margin-right: auto !important; }
+.st-key-palace_b_fig div[data-testid="stImage"] img { width: 100% !important; height: auto !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -169,10 +174,11 @@ def render_spatial_memory():
 
 # =========================================================================
 # Memory Palace가 사용하는 데이터 소스: Fashion-MNIST(sensory item) / MNIST(mnemonic item).
-# lambdas=(2,5,7), Ns=784(28x28), seed=0으로 둘 다 동일해서 한 번만 계산해 공유한다.
-# Npos=70 -> Nstates=4900 (N_m 슬라이더 최대 4000을 커버하기 위해 (2,3,5)에서 확장).
+# lambdas=(3,4,5), Ns=784(28x28), seed=0으로 둘 다 동일해서 한 번만 계산해 공유한다.
+# Npos=60 -> Nstates=3600.
 # =========================================================================
-_PALACE_LAMBDAS = (2, 5, 7)
+_PALACE_LAMBDAS = (3, 4, 5)
+_PALACE_GRID_CODE = GridCode(module_periods=list(_PALACE_LAMBDAS))
 _PALACE_NS = 784
 _PALACE_SEED = 0
 _PALACE_MNEMONIC_SEED = int(np.random.default_rng().integers(0, 2**31 - 1))  # 서버 재시작마다 mnemonic 배치 바뀜
@@ -256,47 +262,83 @@ def _recover(_scaf, _P_seq, _M_seq, _Wms, _Wsm_raw, _Wps, _Wsp, _noise_arr, Nh, 
     noisy_item = true_item if noise_ratio_vis == 0.0 else apply_noise(true_item, "salt_and_pepper", noise_ratio_vis, seed=2)
     sensory_est_noisy = _Wsm_raw @ noisy_item
     S_query_col = sensory_est_noisy[:, None]
-    S_rec, G_rec = recall_sequence_once(_scaf, None, _P_seq, 1, np.random.default_rng(1),
-                                         S_query=S_query_col, return_grid=True, Wps=_Wps, Wsp=_Wsp)
+    S_rec, G_rec, hpc_queried, hpc_retrieved, grid_queried = recall_sequence_once(
+        _scaf, None, _P_seq, 1, np.random.default_rng(1),
+        S_query=S_query_col, return_states=True, Wps=_Wps, Wsp=_Wsp)
     sensory_cleaned = S_rec[0, :, 0]
     addr_clean = np.sign(sensory_cleaned + _noise_arr[:, t])  # 학습 시점(S_addr)과 같은 tie-break 노이즈 재사용
     item_rec = _Wms @ addr_clean
-    return noisy_item, sensory_est_noisy, sensory_cleaned, item_rec, G_rec[0, :, 0]
+    return (noisy_item, sensory_est_noisy, sensory_cleaned, item_rec,
+            hpc_queried[0, :, 0], hpc_retrieved[0, :, 0], grid_queried[0, :, 0], G_rec[0, :, 0])
 
 
 def render_memory_palace_b():
     Nh = 100
     st.header(f"3. Memory Palace ($N_h={Nh}$, $S \\in \\mathbb{{R}}^{{28 \\times 28}}$)")
-    Ns = _PALACE_NS
-    img_h = img_w = int(round(np.sqrt(Ns)))
 
     col1, col2 = st.columns(2)
     depth = stepper_slider("$N_{s-item}$", 101, 120, 101, 1, key="palace_b_depth", container=col1)
-    n_cards = stepper_slider("$N_{m-item}$", 101, 200, 101, 1, key="palace_b_Nm", container=col2)
+    n_mnemonic = stepper_slider("$N_{m-item}$", depth, 200, depth, 1, key="palace_b_Nm", container=col2)
     col3, col4 = st.columns(2)
-    t = stepper_slider("$m$-$item$ index", 1, min(depth, n_cards), 1, 1, key="palace_b_idx", container=col3) - 1
+    t = stepper_slider("$m$-$item$ index", 1, depth, 1, 1, key="palace_b_idx", container=col3) - 1
     noise_ratio_vis = stepper_slider("Noise ratio", 0.0, 0.2, 0.0, 0.05, key="palace_b_noise_ratio", container=col4)
 
     scaf, S_seq, M_seq, P_seq, _S_clean, Wms, Wsm_raw, _G_clean, _G_true, Wps, Wsp, noise_arr = _get_4b_pipeline(Nh, depth)
 
     true_sensory = S_seq[:, t]
     true_item = M_seq[:, t]
-    _noisy_item, _sensory_est_noisy, sensory_cleaned, item_rec, _g_cleanup = _recover(
+    (noisy_item, sensory_queried, sensory_retrieved, item_retrieved,
+     hpc_queried, hpc_retrieved, grid_queried, _grid_retrieved) = _recover(
         scaf, P_seq, M_seq, Wms, Wsm_raw, Wps, Wsp, noise_arr, Nh, depth, t, noise_ratio_vis)
 
     panels = [
-        (true_sensory, "stored sensory item"),
-        (sensory_cleaned, f"recalled sensory item (cos-sim={cos_sim(sensory_cleaned, true_sensory):.2f})"),
-        (true_item, "stored mnemonic item"),
-        (item_rec, f"recalled mnemonic item (cos-sim={cos_sim(item_rec, true_item):.2f})"),
+        [
+            ("image", noisy_item, "queried mnemonic item"),
+            ("image", sensory_queried, "queried sensory item"),
+            ("hpc", hpc_queried, "queried HPC state"),
+            ("grid", grid_queried, "queried Grid state"),
+        ],
+        [
+            ("image", item_retrieved, f"retrieved mnemonic item\n(cos_sim={cos_sim(item_retrieved, true_item):.2f})"),
+            ("image", sensory_retrieved, f"retrieved sensory item\n(cos_sim={cos_sim(sensory_retrieved, sensory_queried):.2f})"),
+            ("hpc", hpc_retrieved, "retrieved HPC state\n"),
+        ],
     ]
-    fig, axes = plt.subplots(1, len(panels), figsize=(3.1 * len(panels), 3.4))
-    for col, (vec, title) in enumerate(panels):
-        axes[col].imshow(vec.reshape(img_h, img_w), cmap="gray")
-        axes[col].set_title(title, fontsize=8)
-        axes[col].set_xticks([]); axes[col].set_yticks([])
-    plt.tight_layout()
-    plt.show()
+    with st.container(key="palace_b_fig"):
+        ncols = len(panels[0])
+        fig, axes = plt.subplots(2, ncols, figsize=(2.4 * ncols, 4.9))
+        fig.subplots_adjust(hspace=1.6, top=0.82, bottom=0.08, wspace=0.3)
+        for row, row_panels in enumerate(panels):
+            for col in range(ncols):
+                ax = axes[row, col]
+                if col >= len(row_panels):
+                    ax.axis("off")
+                    continue
+                kind, vec, _ = row_panels[col]
+                if kind == "grid":
+                    plot_grid_modules_square(ax, _PALACE_GRID_CODE, vec, vmin=None, vmax=None)
+                else:
+                    cmap = "magma" if kind == "hpc" else "gray"
+                    ax.imshow(reshape_sensory_to_image(vec), cmap=cmap)
+                    ax.set_xticks([]); ax.set_yticks([])
+        fig.canvas.draw()
+        # ax.set_title은 박스가 aspect 조정으로 셀 안에서 shrink/재배치되는 grid 패널과
+        # 다른 패널의 제목 높이가 어긋나서, subplotspec의 원래 셀 좌표 기준으로 fig.text를
+        # 직접 배치. 같은 행 안 제목 줄 수를 다 맞춰두면(예: "...HPC state\n") offset을
+        # 행별 고정값 하나로 써도 첫 줄(아이템 이름) 높이가 행 전체에서 맞음
+        # (row0=1줄 제목뿐 -> 0.03, row1=cos_sim 포함 2줄 제목뿐 -> 0.06)
+        row_title_offsets = [0.03, 0.05]
+        for row, row_panels in enumerate(panels):
+            for col in range(ncols):
+                if col >= len(row_panels):
+                    continue
+                ax = axes[row, col]
+                _, _, title = row_panels[col]
+                cell = ax.get_subplotspec().get_position(fig)
+                x = (cell.x0 + cell.x1) / 2
+                y = cell.y1 + row_title_offsets[row]
+                fig.text(x, y, title, ha="center", va="top", fontsize=7)
+        plt.show()
 
 
 # =========================================================================
