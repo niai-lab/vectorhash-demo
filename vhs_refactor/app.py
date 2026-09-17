@@ -293,15 +293,15 @@ def render_memory_palace_b():
 
     panels = [
         [
-            ("image", noisy_item, "queried mnemonic item"),
-            ("image", sensory_queried, "queried sensory item"),
-            ("hpc", hpc_queried, "queried HPC state"),
-            ("grid", grid_queried, "queried Grid state"),
+            ("image", noisy_item, "Queried mnemonic item"),
+            ("image", sensory_queried, "Queried sensory item"),
+            ("hpc", hpc_queried, "Queried HPC state"),
+            ("grid", grid_queried, "Queried grid state"),
         ],
         [
-            ("image", item_retrieved, f"retrieved mnemonic item\n(cos_sim={cos_sim(item_retrieved, true_item):.2f})"),
-            ("image", sensory_retrieved, f"retrieved sensory item\n(cos_sim={cos_sim(sensory_retrieved, sensory_queried):.2f})"),
-            ("hpc", hpc_retrieved, "retrieved HPC state\n"),
+            ("image", item_retrieved, f"Retrieved mnemonic item\n(cos_sim={cos_sim(item_retrieved, true_item):.2f})"),
+            ("image", sensory_retrieved, f"Retrieved sensory item\n(cos_sim={cos_sim(sensory_retrieved, sensory_queried):.2f})"),
+            ("hpc", hpc_retrieved, "Retrieved HPC state\n"),
         ],
     ]
     with st.container(key="palace_b_fig"):
