@@ -52,7 +52,7 @@ button[data-testid^="stBaseButton"] { padding-left: 0.25rem; padding-right: 0.25
 .st-key-item_memory_fig div[data-testid="stImage"] img { width: 100% !important; height: auto !important; }
 .st-key-spatial_memory_figs div[data-testid="stImage"] { max-width: 90% !important; margin-left: auto !important; margin-right: auto !important; }
 .st-key-spatial_memory_figs div[data-testid="stImage"] img { width: 100% !important; height: auto !important; }
-.st-key-palace_b_fig div[data-testid="stImage"] { max-width: 75% !important; margin-left: auto !important; margin-right: auto !important; }
+.st-key-palace_b_fig div[data-testid="stImage"] { max-width: 60% !important; margin-left: auto !important; margin-right: auto !important; }
 .st-key-palace_b_fig div[data-testid="stImage"] img { width: 100% !important; height: auto !important; }
 </style>
 """, unsafe_allow_html=True)
@@ -338,7 +338,7 @@ def render_memory_palace_b():
                 # grid 패널은 aspect="equal"로 박스가 셀 안에서 shrink돼 다른 패널보다
                 # 제목이 아래로 처짐 -- pad로 grid 패널만 더 띄워서 줄맞춤.
                 pad = 60 if kind == "grid" else 5
-                ax.set_title(title, fontsize=7, pad=pad)
+                ax.set_title(title, fontsize=9, pad=pad)
         plt.show()
 
 
