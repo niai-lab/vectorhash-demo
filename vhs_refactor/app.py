@@ -337,7 +337,7 @@ def render_memory_palace_b():
                     ax.set_xticks([]); ax.set_yticks([])
                 # grid 패널은 aspect="equal"로 박스가 셀 안에서 shrink돼 다른 패널보다
                 # 제목이 아래로 처짐 -- pad로 grid 패널만 더 띄워서 줄맞춤.
-                pad = 45 if kind == "grid" else 5
+                pad = 60 if kind == "grid" else 5
                 ax.set_title(title, fontsize=7, pad=pad)
         plt.show()
 
