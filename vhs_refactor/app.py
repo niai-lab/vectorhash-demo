@@ -321,7 +321,7 @@ def render_memory_palace_b():
         nrows = len(panels)
         ncols = max(len(row_panels) for row_panels in panels)
         fig, axes = plt.subplots(nrows, ncols, figsize=(2.4 * ncols, 2.45 * nrows))
-        fig.subplots_adjust(hspace=1.6, top=0.85, bottom=0.06, wspace=0.3)
+        fig.subplots_adjust(hspace=0, top=0.85, bottom=0.06, wspace=0.3)
         for row, row_panels in enumerate(panels):
             for col in range(ncols):
                 ax = axes[row, col]
