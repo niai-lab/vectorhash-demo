@@ -219,20 +219,26 @@ def _get_palace_scaffold(Nh, gamma=0.6, thresh=0.5):
 # 3. Memory Palace: Cleanup Test (구 4b)
 # =========================================================================
 @st.cache_resource(max_entries=1, show_spinner="Running cleanup pipeline...")
-def _get_4b_pipeline(Nh, depth):
+def _get_4b_pipeline(Nh, n_sensory, n_mnemonic):
     scaf = _get_palace_scaffold(Nh)
     sbook_old, mbook_new, idxs_all, _, _ = _get_palace_books()
-    idxs_seq = idxs_all[:depth]
-    P_seq = scaf["pbook_flat"][:, :, idxs_seq]
-    S_seq = sbook_old[:, idxs_seq]
-    M_seq = mbook_new[:, idxs_seq]
 
-    # Wps/Wsp는 S_seq/P_seq/depth에만 의존(어느 item을 조회하든 동일)하므로 여기서
-    # 한 번만 학습해 반환 -- _recover()가 item index 바뀔 때마다 이 pinv(depth 전체
-    # 크기)를 다시 돌리지 않고 재사용하기 위함.
-    Wps = pseudotrain_Wps(P_seq, S_seq, depth)
-    Wsp = pseudotrain_Wsp(S_seq, P_seq, depth)
-    S_clean, G_clean = recall_sequence_once(scaf, S_seq, P_seq, depth, np.random.default_rng(1),
+    # Wps/Wsp(grid scaffold <-> sensory)는 N_sensory 길이 시퀀스로 학습.
+    idxs_seq_s = idxs_all[:n_sensory]
+    P_seq_s = scaf["pbook_flat"][:, :, idxs_seq_s]
+    S_seq_s = sbook_old[:, idxs_seq_s]
+    Wps = pseudotrain_Wps(P_seq_s, S_seq_s, n_sensory)
+    Wsp = pseudotrain_Wsp(S_seq_s, P_seq_s, n_sensory)
+
+    # Wms/Wsm(주소 <-> mnemonic item)은 N_mnemonic 길이로 별도 슬라이스해서 학습.
+    # Wps/Wsp는 순수 선형사상(pinv로 이미 고정)이라 학습에 쓰인 길이(N_sensory)와
+    # 무관하게 임의 길이 시퀀스에 그대로 적용 가능 -- Spatial Memory의
+    # trained_length/novel_length 패턴과 동일하게 여기 재사용한다.
+    idxs_seq_m = idxs_all[:n_mnemonic]
+    P_seq_m = scaf["pbook_flat"][:, :, idxs_seq_m]
+    S_seq_m = sbook_old[:, idxs_seq_m]
+    M_seq = mbook_new[:, idxs_seq_m]
+    S_clean, G_clean = recall_sequence_once(scaf, S_seq_m, P_seq_m, n_mnemonic, np.random.default_rng(1),
                                              return_grid=True, Wps=Wps, Wsp=Wsp)
     # S_addr = sign(S_clean)로 이진화된 값이라 컬럼끼리 겹치거나 선형종속되기 쉬움
     # (실측: depth=100에서 rank 90/100, 중복 10개) -> sign() 직전에 고정 노이즈를
@@ -244,19 +250,19 @@ def _get_4b_pipeline(Nh, depth):
     # S_addr full column rank 깨지기 쉬워(QR pinv로 계산해보니 실제로 폭발) SVD 기반 pinv 유지.
     Wms = M_seq @ la.pinv(S_addr)          # 주소 -> new item
     Wsm_raw = S_clean[0] @ qr_pinv(M_seq)  # new item -> recalled sensory (원본 스케일, M은 full column rank)
-    G_true = scaf["gbook_flat"][:, idxs_seq]
-    return scaf, S_seq, M_seq, P_seq, S_clean, Wms, Wsm_raw, G_clean, G_true, Wps, Wsp, noise_arr
+    G_true = scaf["gbook_flat"][:, idxs_seq_m]
+    return scaf, S_seq_m, M_seq, P_seq_m, S_clean, Wms, Wsm_raw, G_clean, G_true, Wps, Wsp, noise_arr
 
 
 @st.cache_data(show_spinner=False)
-def _recover(_scaf, _P_seq, _M_seq, _Wms, _Wsm_raw, _Wps, _Wsp, _noise_arr, Nh, depth, t, noise_ratio_vis):
-    # item index(t)만 바뀔 때마다 recall_sequence_once가 depth 전체를 재학습(pinv)하고
-    # depth개 위치 전부 cleanup 루프를 도는 게 느려서 (Nh, depth, t, noise_ratio_vis)
+def _recover(_scaf, _P_seq, _M_seq, _Wms, _Wsm_raw, _Wps, _Wsp, _noise_arr, Nh, n_mnemonic, t, noise_ratio_vis):
+    # item index(t)만 바뀔 때마다 recall_sequence_once가 시퀀스 전체를 재학습(pinv)하고
+    # 전체 위치에 대해 cleanup 루프를 도는 게 느려서 (Nh, n_mnemonic, t, noise_ratio_vis)
     # 기준으로 캐싱 + t 하나짜리 컬럼만 회상하도록 축소.
     # Wps/Wsp(_get_4b_pipeline에서 이미 학습됨)는 S_query가 뭐든 동일한 선형사상이라
-    # t 하나만 조회할 때도 재학습 없이 그대로 재사용 가능(depth 무관, O(1)).
+    # t 하나만 조회할 때도 재학습 없이 그대로 재사용 가능(길이 무관, O(1)).
     # 배열 인자(_ 접두사)는 해시 대상에서 제외되므로, 캐시 키 구분을 위해
-    # Nh/depth를 별도 인자로 받는다(안 그러면 Nh만 바뀌어도 이전 파이프라인의
+    # Nh/n_mnemonic을 별도 인자로 받는다(안 그러면 Nh만 바뀌어도 이전 파이프라인의
     # 결과가 잘못 재사용될 수 있음).
     true_item = _M_seq[:, t]
     noisy_item = true_item if noise_ratio_vis == 0.0 else apply_noise(true_item, "salt_and_pepper", noise_ratio_vis, seed=2)
@@ -277,67 +283,62 @@ def render_memory_palace_b():
     st.header(f"3. Memory Palace ($N_h={Nh}$, $S \\in \\mathbb{{R}}^{{28 \\times 28}}$)")
 
     col1, col2 = st.columns(2)
-    depth = stepper_slider("$N_{s-item}$", 101, 120, 101, 1, key="palace_b_depth", container=col1)
-    n_mnemonic = stepper_slider("$N_{m-item}$", depth, 200, depth, 1, key="palace_b_Nm", container=col2)
+    n_sensory = stepper_slider("$N_{sensory}$", 90, 150, 120, 1, key="palace_b_n_sensory", container=col1)
+    n_mnemonic = stepper_slider("$N_{mnemonic}$", n_sensory - 50, n_sensory + 50, n_sensory, 1,
+                                 key="palace_b_n_mnemonic", container=col2)
     col3, col4 = st.columns(2)
-    t = stepper_slider("$m$-$item$ index", 1, depth, 1, 1, key="palace_b_idx", container=col3) - 1
+    t = stepper_slider("$m$-$item$ index", 1, n_mnemonic, 1, 1, key="palace_b_idx", container=col3) - 1
     noise_ratio_vis = stepper_slider("Noise ratio", 0.0, 0.2, 0.0, 0.05, key="palace_b_noise_ratio", container=col4)
 
-    scaf, S_seq, M_seq, P_seq, _S_clean, Wms, Wsm_raw, _G_clean, _G_true, Wps, Wsp, noise_arr = _get_4b_pipeline(Nh, depth)
+    scaf, S_seq, M_seq, P_seq, _S_clean, Wms, Wsm_raw, _G_clean, _G_true, Wps, Wsp, noise_arr = _get_4b_pipeline(
+        Nh, n_sensory, n_mnemonic)
 
     true_sensory = S_seq[:, t]
     true_item = M_seq[:, t]
     (noisy_item, sensory_queried, sensory_retrieved, item_retrieved,
-     hpc_queried, hpc_retrieved, grid_queried, _grid_retrieved) = _recover(
-        scaf, P_seq, M_seq, Wms, Wsm_raw, Wps, Wsp, noise_arr, Nh, depth, t, noise_ratio_vis)
+     hpc_queried, hpc_retrieved, grid_queried, grid_retrieved) = _recover(
+        scaf, P_seq, M_seq, Wms, Wsm_raw, Wps, Wsp, noise_arr, Nh, n_mnemonic, t, noise_ratio_vis)
 
     panels = [
         [
-            ("image", noisy_item, "Queried mnemonic item"),
-            ("image", sensory_queried, "Queried sensory item"),
-            ("hpc", hpc_queried, "Queried HPC state"),
-            ("grid", grid_queried, "Queried grid state"),
+            ("image", true_item, "True mnemonic item"),
+            ("image", true_sensory, "True sensory item"),
+        ],
+        [
+            ("image", noisy_item, f"Queried mnemonic item\n(cos_sim={cos_sim(noisy_item, true_item):.2f})"),
+            ("image", sensory_queried, f"Queried sensory item\n(cos_sim={cos_sim(sensory_queried, true_sensory):.2f})"),
+            ("hpc", hpc_queried, "Queried HPC state\n"),
+            ("grid", grid_queried, "Queried Grid state"),
         ],
         [
             ("image", item_retrieved, f"Retrieved mnemonic item\n(cos_sim={cos_sim(item_retrieved, true_item):.2f})"),
-            ("image", sensory_retrieved, f"Retrieved sensory item\n(cos_sim={cos_sim(sensory_retrieved, sensory_queried):.2f})"),
+            ("image", sensory_retrieved, f"Retrieved sensory item\n(cos_sim={cos_sim(sensory_retrieved, true_sensory):.2f})"),
             ("hpc", hpc_retrieved, "Retrieved HPC state\n"),
+            ("grid", grid_retrieved, "Retrieved Grid state"),
         ],
     ]
     with st.container(key="palace_b_fig"):
-        ncols = len(panels[0])
-        fig, axes = plt.subplots(2, ncols, figsize=(2.4 * ncols, 4.9))
-        fig.subplots_adjust(hspace=1.6, top=0.82, bottom=0.08, wspace=0.3)
+        nrows = len(panels)
+        ncols = max(len(row_panels) for row_panels in panels)
+        fig, axes = plt.subplots(nrows, ncols, figsize=(2.4 * ncols, 2.45 * nrows))
+        fig.subplots_adjust(hspace=1.6, top=0.85, bottom=0.06, wspace=0.3)
         for row, row_panels in enumerate(panels):
             for col in range(ncols):
                 ax = axes[row, col]
                 if col >= len(row_panels):
                     ax.axis("off")
                     continue
-                kind, vec, _ = row_panels[col]
+                kind, vec, title = row_panels[col]
                 if kind == "grid":
                     plot_grid_modules_square(ax, _PALACE_GRID_CODE, vec, vmin=None, vmax=None)
                 else:
                     cmap = "magma" if kind == "hpc" else "gray"
                     ax.imshow(reshape_sensory_to_image(vec), cmap=cmap)
                     ax.set_xticks([]); ax.set_yticks([])
-        fig.canvas.draw()
-        # ax.set_title은 박스가 aspect 조정으로 셀 안에서 shrink/재배치되는 grid 패널과
-        # 다른 패널의 제목 높이가 어긋나서, subplotspec의 원래 셀 좌표 기준으로 fig.text를
-        # 직접 배치. 같은 행 안 제목 줄 수를 다 맞춰두면(예: "...HPC state\n") offset을
-        # 행별 고정값 하나로 써도 첫 줄(아이템 이름) 높이가 행 전체에서 맞음
-        # (row0=1줄 제목뿐 -> 0.03, row1=cos_sim 포함 2줄 제목뿐 -> 0.06)
-        row_title_offsets = [0.03, 0.05]
-        for row, row_panels in enumerate(panels):
-            for col in range(ncols):
-                if col >= len(row_panels):
-                    continue
-                ax = axes[row, col]
-                _, _, title = row_panels[col]
-                cell = ax.get_subplotspec().get_position(fig)
-                x = (cell.x0 + cell.x1) / 2
-                y = cell.y1 + row_title_offsets[row]
-                fig.text(x, y, title, ha="center", va="top", fontsize=7)
+                # grid 패널은 aspect="equal"로 박스가 셀 안에서 shrink돼 다른 패널보다
+                # 제목이 아래로 처짐 -- pad로 grid 패널만 더 띄워서 줄맞춤.
+                pad = 45 if kind == "grid" else 5
+                ax.set_title(title, fontsize=7, pad=pad)
         plt.show()
 
 
