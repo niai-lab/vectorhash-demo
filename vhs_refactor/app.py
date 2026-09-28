@@ -182,8 +182,8 @@ _PALACE_GRID_CODE = GridCode(module_periods=list(_PALACE_LAMBDAS))
 _PALACE_NS = 784
 _PALACE_SEED = 0
 _PALACE_MNEMONIC_SEED = int(np.random.default_rng().integers(0, 2**31 - 1))  # 서버 재시작마다 mnemonic 배치 바뀜
-_PALACE_SENSORY_NPY = "BW_fashionmnist_5000_28_28.npy"
-_PALACE_MNEMONIC_NPY = "BW_mnist_5000_28_28.npy"
+_PALACE_SENSORY_NPY = "BW_fashionmnist_5000_28_28_shuffled.npy"
+_PALACE_MNEMONIC_NPY = "BW_mnist_5000_28_28_shuffled.npy"
 
 
 @st.cache_data(max_entries=1, show_spinner="Loading sensory/mnemonic books...")
@@ -287,7 +287,7 @@ def render_memory_palace_b():
     n_mnemonic = stepper_slider("$N_{mnemonic}$", n_sensory - 50, n_sensory + 50, n_sensory, 1,
                                  key="palace_b_n_mnemonic", container=col2)
     col3, col4 = st.columns(2)
-    t = stepper_slider("$m$-$item$ index", 1, n_mnemonic, 1, 1, key="palace_b_idx", container=col3) - 1
+    t = stepper_slider("Mnemonic item index", 1, n_mnemonic, 1, 1, key="palace_b_idx", container=col3) - 1
     noise_ratio_vis = stepper_slider("Noise ratio", 0.0, 0.2, 0.0, 0.05, key="palace_b_noise_ratio", container=col4)
 
     scaf, S_seq, M_seq, P_seq, _S_clean, Wms, Wsm_raw, _G_clean, _G_true, Wps, Wsp, noise_arr = _get_4b_pipeline(
@@ -305,14 +305,14 @@ def render_memory_palace_b():
             ("image", true_sensory, "True sensory item"),
         ],
         [
-            ("image", noisy_item, f"Queried mnemonic item\n(cos_sim={cos_sim(noisy_item, true_item):.2f})"),
-            ("image", sensory_queried, f"Queried sensory item\n(cos_sim={cos_sim(sensory_queried, true_sensory):.2f})"),
+            ("image", noisy_item, f"Queried mnemonic item\ncos(true, queried) = {cos_sim(noisy_item, true_item):.2f}"),
+            ("image", sensory_queried, f"Queried sensory item\ncos(true, queried) = {cos_sim(sensory_queried, true_sensory):.2f}"),
             ("hpc", hpc_queried, "Queried HPC state\n"),
             ("grid", grid_queried, "Queried Grid state"),
         ],
         [
-            ("image", item_retrieved, f"Retrieved mnemonic item\n(cos_sim={cos_sim(item_retrieved, true_item):.2f})"),
-            ("image", sensory_retrieved, f"Retrieved sensory item\n(cos_sim={cos_sim(sensory_retrieved, true_sensory):.2f})"),
+            ("image", item_retrieved, f"Retrieved mnemonic item\ncos(true, retrieved) = {cos_sim(item_retrieved, true_item):.2f}"),
+            ("image", sensory_retrieved, f"Retrieved sensory item\ncos(true, retrieved) = {cos_sim(sensory_retrieved, true_sensory):.2f}"),
             ("hpc", hpc_retrieved, "Retrieved HPC state\n"),
             ("grid", grid_retrieved, "Retrieved Grid state"),
         ],
@@ -349,6 +349,23 @@ section = st.sidebar.radio(
     "Section",
     ["1. Item Memory", "2. Spatial Memory", "3. Memory Palace"],
 )
+
+st.sidebar.markdown("""
+<div style="display:flex; flex-direction:column; justify-content:flex-end; align-items:flex-end; min-height:calc(100vh - 220px); margin-bottom:-80px;">
+<a href="https://github.com/niai-lab/vectorhash-demo" target="_blank" style="display:inline-block;">
+<svg viewBox="0 0 16 16" width="40" height="40" style="fill:#888;" xmlns="http://www.w3.org/2000/svg">
+<path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38
+0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13
+-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66
+.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15
+-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27
+.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12
+.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48
+0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
+</svg>
+</a>
+</div>
+""", unsafe_allow_html=True)
 
 if section == "1. Item Memory":
     render_item_memory()
