@@ -255,7 +255,7 @@ def _get_4b_pipeline(Nh, n_sensory, n_mnemonic):
 
 
 @st.cache_data(show_spinner=False)
-def _recover(_scaf, _P_seq, _M_seq, _Wms, _Wsm_raw, _Wps, _Wsp, _noise_arr, Nh, n_mnemonic, t, noise_ratio_vis):
+def _recover(_scaf, _P_seq, _M_seq, _Wms, _Wsm_raw, _Wps, _Wsp, _noise_arr, Nh, n_sensory, n_mnemonic, t, noise_ratio_vis):
     # item index(t)만 바뀔 때마다 recall_sequence_once가 시퀀스 전체를 재학습(pinv)하고
     # 전체 위치에 대해 cleanup 루프를 도는 게 느려서 (Nh, n_mnemonic, t, noise_ratio_vis)
     # 기준으로 캐싱 + t 하나짜리 컬럼만 회상하도록 축소.
@@ -297,7 +297,7 @@ def render_memory_palace_b():
     true_item = M_seq[:, t]
     (noisy_item, sensory_queried, sensory_retrieved, item_retrieved,
      hpc_queried, hpc_retrieved, grid_queried, grid_retrieved) = _recover(
-        scaf, P_seq, M_seq, Wms, Wsm_raw, Wps, Wsp, noise_arr, Nh, n_mnemonic, t, noise_ratio_vis)
+        scaf, P_seq, M_seq, Wms, Wsm_raw, Wps, Wsp, noise_arr, Nh, n_sensory, n_mnemonic, t, noise_ratio_vis)
 
     panels = [
         [
