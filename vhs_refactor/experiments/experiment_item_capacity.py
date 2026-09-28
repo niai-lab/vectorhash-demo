@@ -147,7 +147,7 @@ def render_node_states_panel(mem, items, target_idx, noise_type, noise_ratio, ex
     axes[0, 0].axis('off')
 
     axes[0, 1].imshow(s_noisy_2d, cmap="gray")
-    axes[0, 1].set_title("Noisy item", fontsize=14)
+    axes[0, 1].set_title("Queried item", fontsize=14)
     axes[0, 1].axis('off')
 
     axes[0, 2].imshow(s_rec_2d, cmap="gray")
