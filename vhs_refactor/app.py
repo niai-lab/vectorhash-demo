@@ -212,6 +212,7 @@ def _get_palace_books():
 
 @st.cache_resource(max_entries=1, show_spinner="Training scaffold...")
 def _get_palace_scaffold(Nh, gamma=0.6, thresh=0.5):
+    np.random.seed(_PALACE_SEED)
     return build_seq_scaffold(list(_PALACE_LAMBDAS), Nh, gamma=gamma, thresh=thresh, nruns=1)
 
 
