@@ -14,6 +14,7 @@ VectorHASH_fig7.ipynb 에 실제로 정의된 함수들
 """
 import os
 import numpy as np
+import scipy.linalg as la
 import matplotlib.pyplot as plt
 from numpy.random import randn, randint
 
@@ -48,7 +49,7 @@ def build_seq_scaffold(lambdas, Nh, gamma=0.6, thresh=2.5, nruns=1):
     pbook = nonlin(np.einsum("ijk,klm->ijlm", Wpg, gbook), thresh=thresh)
     pbook_flat = pbook.reshape(nruns, Nh, Nstates)
 
-    Wgp = train_gcpc(pbook_flat, gbook_flat, Nstates)
+    Wgp = np.stack([gbook_flat @ la.pinv(p) for p in pbook_flat])
 
     module_sizes = np.square(lambdas)
     module_gbooks = [np.eye(i) for i in module_sizes]
