@@ -4,7 +4,7 @@ An interactive graphical user interface (GUI) for exploring and demonstrating **
 
 This project provides interactive demonstrations focused on three applications of Vector-HaSH:
 
-* **Item Memory** — Illustrate how Vector-HaSH stores sensory items through heteroassociation with the hippocampal scaffold and subsequently recalls them from partial or corrupted inputs.
+* **Item Memory** — Illustrate how Vector-HaSH stores sensory items through heteroassociation with the grid-hippocampal scaffold and subsequently recalls them from partial or corrupted inputs.
 * **Spatial Memory** — Visualize how spatial locations are represented using the memory scaffold and how the model can associate sensory information with locations.
 * **Memory Palace** — Demonstrate the connection between Vector-HaSH and the method of loci. Mnemonic items can be associated with sensory landmarks and later retrieved by noisy recalled sensory items.
 
