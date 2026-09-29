@@ -4,9 +4,9 @@ An interactive graphical user interface (GUI) for exploring and demonstrating **
 
 This project provides interactive demonstrations focused on three applications of Vector-HaSH:
 
-* **Item Memory** — Store and retrieve individual items using the Vector-HaSH associative memory architecture.
-* **Spatial Memory** — Explore how Vector-HaSH uses grid-cell-based spatial representations to encode and retrieve locations.
-* **Memory Palace** — Demonstrate how spatial scaffolds can be used to associate arbitrary items with locations for structured memory and recall.
+* **Item Memory** — Illustrate how Vector-HaSH stores sensory items through heteroassociation with the grid-hippocampal scaffold and subsequently recalls them from partial or corrupted inputs.
+* **Spatial Memory** — Visualize how spatial locations are represented using the memory scaffold and how the model can associate sensory information with locations.
+* **Memory Palace** — Demonstrate the connection between Vector-HaSH and the method of loci. Mnemonic items can be associated with sensory landmarks and later retrieved by noisy recalled sensory items.
 
 ## About Vector-HaSH
 
@@ -34,22 +34,6 @@ https://github.com/FieteLab/VectorHaSH
 
 The Vector-HaSH code used in this project was **refactored from the original implementation provided by the paper authors** to support the interactive GUI demonstrations.
 
-## Demonstrations
-
-### Item Memory
-
-The Item Memory demo illustrates how Vector-HaSH stores sensory items through heteroassociation with the hippocampal scaffold and subsequently recalls them from partial or corrupted inputs.
-
-### Spatial Memory
-
-The Spatial Memory demo visualizes how spatial locations are represented using the grid-cell scaffold and how the model can associate sensory information with locations.
-
-### Memory Palace
-
-The Memory Palace demo illustrates the connection between Vector-HaSH and the **method of loci**. Items can be associated with spatial landmarks and later recalled by navigating through the spatial scaffold.
-
-This demonstrates how Vector-HaSH can use an underlying spatial representation to organize and retrieve arbitrary non-spatial information.
-
 ## Purpose
 
 The goal of this repository is to provide an accessible, interactive way to explore selected capabilities of Vector-HaSH.
@@ -59,16 +43,6 @@ Rather than reproducing every experiment from the original paper, the GUI focuse
 **Item Memory · Spatial Memory · Memory Palace**
 
 The interface is intended for demonstration and exploration of the model's behavior.
-
-## Acknowledgments
-
-This project builds upon the Vector-HaSH model and source code developed by **Sarthak Chandra, Sugandha Sharma, Rishidev Chaudhuri, and Ila Fiete**.
-
-The underlying Vector-HaSH implementation was originally released by the **Fiete Lab**:
-
-https://github.com/FieteLab/VectorHaSH
-
-Please refer to and cite the original paper when using Vector-HaSH in research.
 
 ## Citation
 If you use this GUI demo in your work, please cite:
