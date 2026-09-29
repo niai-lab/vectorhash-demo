@@ -32,7 +32,7 @@ _MOVES_DY = np.array([0, 0, 1, -1], dtype=np.int64)
 
 
 def _next_seed(seed, attempt):
-    """seed가 None이면(고정 안 함) 매 attempt OS 엔트로피로 새 정수 시드를 뽑는다
+    """seed가 None이면(고정 안 함)
     -- numba jit 함수는 np.random.seed(int)로만 시드를 받을 수 있어서 필요."""
     if seed is not None:
         return (seed + attempt) % (2**31 - 1)
@@ -205,10 +205,7 @@ def _bfs_shortest_path(start, target, forbidden, lo, hi, rng):
 def build_novel_trajectory(model, novel_length=600, n_overlap=5, seed=None, max_attempts=3000):
     """원래 경로(model)와 정확히 n_overlap개 지점에서만 겹치는("재방문") 새
     경로를 만든다. 원래 경로 위 지정한 n_overlap개(anchor) 위치만 지나가게
-    허용하고, 나머지 원래 경로 칸은 전부 회피(forbidden)한다 -- fig4e_random
-    .ipynb의 fig4c '겹치는 지점 정확히 N개' 경로 생성 방식과 동일한 원리
-    (거기서는 A*, 여기서는 BFS로 forbidden 칸을 피해서 anchor들을 순서대로
-    연결). 나머지 길이는 forbidden을 피해서 무작위 보행으로 채운다."""
+    허용하고, 나머지 원래 경로 칸은 전부 회피(forbidden)한다"""
     Npos, pad = model["Npos"], model["room_pad"]
     trained_path = [tuple(int(v) for v in p) for p in model["path_xy"]]
     lo, hi = pad, Npos - pad
@@ -360,10 +357,6 @@ def plot_paths(model, novel_model=None, title="Grid world", unvisited_steps=None
 
 
 def plot_grid_modules_square(ax, grid_code, g, cmap="OrRd", vmin=0, vmax=1, shear_deg=60):
-    """한 axes(정사각형) 안에 모듈별 grid state를 가로로 나란히 그린다. 박스 크기를
-    period(k)에 비례시켜서 모듈마다 칸(cell) 하나의 화면 크기는 동일하게 유지하고,
-    n×n 격자 자체의 전체 크기만 k가 클수록 커지게 한다. shear_deg만큼 x축 방향으로
-    기울여서(pcolormesh 좌표를 직접 shear) 마름모(실제 grid cell lattice) 느낌을 낸다."""
     ax.axis("off")
     blocks = grid_code.state_blocks(g)
     periods = grid_code.module_periods
@@ -371,9 +364,6 @@ def plot_grid_modules_square(ax, grid_code, g, cmap="OrRd", vmin=0, vmax=1, shea
     theta = np.deg2rad(shear_deg)
     cos_t, sin_t = np.cos(theta), np.sin(theta)
 
-    # 겹침을 고정 폭(예: -0.03)이 아니라 "모듈 자기 폭의 일정 비율"로 잡아야, 작은
-    # 모듈(4x4)과 큰 모듈(7x7)의 겹침 정도가 시각적으로 동일해 보인다 -- 고정폭이면
-    # 큰 모듈일수록 같은 겹침이 상대적으로 작아 보여서 간격이 들쭉날쭉해 보였다.
     margin = 0.02
     overlap_ratio = 0.3
     K_all = sum(periods)
